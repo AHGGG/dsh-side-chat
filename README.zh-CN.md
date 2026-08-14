@@ -81,3 +81,9 @@ dsh plugin --profile web remove @ahggg/dsh-side-chat
 ## 许可证
 
 MIT
+
+## References
+
+- https://www.v2ex.com
+- https://linux.do
+- https://linux.sb
