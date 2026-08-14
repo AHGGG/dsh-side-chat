@@ -19,7 +19,31 @@ function captureEvent(event: MouseEvent | KeyboardEvent): boolean {
   if (event instanceof KeyboardEvent && event.key === 'Escape') return false
   const target = event.target
   return !(target instanceof Element
-    && target.closest('[data-side-chat-panel], .dsh-side-chat-selection-actions') !== null)
+    && target.closest([
+      '[data-side-chat-panel]',
+      '.dsh-side-chat-selection-actions',
+      '.dsh-side-chat-selection-comment',
+    ].join(', ')) !== null)
+}
+
+function focusParentComposer(): void {
+  const input = document.querySelector<HTMLElement>([
+    '[data-composer-seat] textarea',
+    '[data-composer-seat] [role="textbox"]',
+    '[data-composer-seat] [contenteditable="true"]',
+  ].join(', '))
+  if (input === null) return
+  input.focus()
+  if (input instanceof HTMLTextAreaElement) {
+    input.setSelectionRange(input.value.length, input.value.length)
+    return
+  }
+  const range = document.createRange()
+  range.selectNodeContents(input)
+  range.collapse(false)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
 }
 
 /** rc.6 compatibility surface: selection toolbar plus a non-current child conversation panel. */
@@ -39,6 +63,7 @@ export function Rc6SideChatOverlay({
   const [selection, setSelection] = useState<ConversationSelection | null>(null)
   const captureGeneration = useRef(0)
   const mouseDownPoint = useRef<{ readonly x: number; readonly y: number } | null>(null)
+  const annotationEditing = useRef(false)
 
   const capture = useCallback(async (): Promise<void> => {
     const generation = ++captureGeneration.current
@@ -80,6 +105,7 @@ export function Rc6SideChatOverlay({
         return
       }
       mouseDownPoint.current = { x: event.clientX, y: event.clientY }
+      annotationEditing.current = false
       ++captureGeneration.current
       setSelection(null)
     }
@@ -93,6 +119,7 @@ export function Rc6SideChatOverlay({
       if (moved || event.detail > 1 || event.shiftKey) void capture()
     }
     const onSelectionChange = (): void => {
+      if (annotationEditing.current) return
       const browserSelection = window.getSelection()
       if (browserSelection !== null && !browserSelection.isCollapsed) return
       ++captureGeneration.current
@@ -121,6 +148,7 @@ export function Rc6SideChatOverlay({
 
   useEffect(() => {
     ++captureGeneration.current
+    annotationEditing.current = false
     setSelection(null)
   }, [currentSessionId])
 
@@ -141,7 +169,18 @@ export function Rc6SideChatOverlay({
       {selection !== null && (
         <SelectionActions
           selection={selection}
+          annotationNumber={sessions.nextConversationAnnotationNumber()}
           {...askDisabledReason === undefined ? {} : { askDisabledReason }}
+          onAddToChat={(captured, comment) => {
+            try {
+              if (sessions.addSelectionToConversation(captured, comment)) focusParentComposer()
+              else sessions.notify({ kind: 'warning', text: 'Could not add the selection to the current chat.' })
+            } catch {
+              sessions.notify({ kind: 'warning', text: 'Could not add the selection to the current chat.' })
+            }
+            setSelection(null)
+          }}
+          onAnnotationEditorChange={(open) => { annotationEditing.current = open }}
           onMoreDetails={(captured) => {
             const opened = controller.openDraft({ selection: captured })
             if (!opened.ok) sessions.notify({ kind: 'warning', text: opened.error.message })
@@ -153,7 +192,10 @@ export function Rc6SideChatOverlay({
             if (!opened.ok) sessions.notify({ kind: 'warning', text: opened.error.message })
             setSelection(null)
           }}
-          onDismiss={() => { setSelection(null) }}
+          onDismiss={() => {
+            annotationEditing.current = false
+            setSelection(null)
+          }}
         />
       )}
       {state.phase !== 'closed' && (

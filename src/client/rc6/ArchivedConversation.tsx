@@ -315,7 +315,7 @@ export function ArchivedConversation({
           ? (
               <div key={`${node.kind}-${String(node.seq)}`} className="dsh-side-chat-annotated-user-message">
                 <SelectionQuote
-                  selection={selection}
+                  selections={[selection]}
                   messages={SIDE_CHAT_MESSAGES[locale]}
                   {...onCopySelection === undefined ? {} : { onCopy: onCopySelection }}
                 />

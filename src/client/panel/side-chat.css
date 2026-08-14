@@ -249,25 +249,40 @@
   border-radius: 16px;
   background: var(--side-chat-bg);
   box-shadow: 0 4px 14px rgb(0 0 0 / 8%);
+  font-size: 14px;
+  line-height: 1.45;
   opacity: 0;
   pointer-events: none;
   transform: translate(var(--dsh-side-chat-quote-offset-x, 0px), 4px);
   visibility: hidden;
   transition: opacity 100ms ease, transform 120ms ease, visibility 100ms ease;
 }
+.dsh-side-chat-quote-details::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -8px;
+  left: 0;
+  height: 8px;
+}
 .dsh-side-chat-quote:hover .dsh-side-chat-quote-details,
+.dsh-side-chat-quote[data-hovered] .dsh-side-chat-quote-details,
 .dsh-side-chat-quote:focus-within .dsh-side-chat-quote-details,
 .dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-details {
   opacity: 1;
+  pointer-events: auto;
   transform: translate(var(--dsh-side-chat-quote-offset-x, 0px), 0);
   visibility: visible;
 }
-.dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-details { pointer-events: auto; }
 .dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details {
   top: calc(100% + 8px);
   right: 0;
   bottom: auto;
   left: auto;
+}
+.dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details::before {
+  top: -8px;
+  bottom: auto;
 }
 .dsh-side-chat-quote-details-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dsh-side-chat-quote-details-header strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
@@ -279,8 +294,25 @@
   background: var(--side-chat-bg);
   color: inherit;
   cursor: pointer;
+  font-size: 13px;
 }
-.dsh-side-chat-quote pre { max-height: 180px; margin: 8px 0 0; overflow: auto; white-space: pre-wrap; font: inherit; }
+.dsh-side-chat-quote-detail + .dsh-side-chat-quote-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--side-chat-border);
+}
+.dsh-side-chat-quote pre {
+  max-height: 180px;
+  margin: 4px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+}
+.dsh-side-chat-quote-comment {
+  margin-top: 9px;
+}
+.dsh-side-chat-quote-comment > strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
+.dsh-side-chat-quote-comment > pre { margin-top: 4px; }
 .dsh-side-chat-error { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--side-chat-border); border-radius: 14px; background: var(--dsw-surface-subtle, #f7f7f9); }
 .dsh-side-chat-error { border-color: var(--dsw-danger, #b42318); }
 .dsh-side-chat-body { min-height: 0; flex: 1; overflow: hidden; }
@@ -293,6 +325,46 @@
   gap: 8px;
 }
 .dsh-side-chat-annotated-user-message .dsh-side-chat-message { max-width: 100%; align-self: stretch; }
+
+/* The DSH occurrence remains the durable serialization carrier, while this
+   plugin-owned capsule supplies the visible and interactive projection. */
+[data-composer-seat] [data-decoration="chip"][title="__dsh_side_chat_annotations__"] {
+  visibility: hidden;
+}
+.dsh-side-chat-parent-annotation-dock,
+.dsh-side-chat-parent-user-message {
+  --side-chat-border: var(--dsw-border, #d8d8de);
+  --side-chat-bg: var(--dsw-surface, #ffffff);
+  --side-chat-muted: var(--dsw-text-muted, #62636a);
+  color: var(--dsw-text, #19191d);
+}
+.dsh-side-chat-parent-annotation-dock {
+  position: relative;
+  z-index: 20;
+  width: calc(100% - 32px);
+  max-width: var(--dsh-composer-card-max-width, 780px);
+  height: 0;
+  margin: 0 auto;
+  pointer-events: none;
+}
+.dsh-side-chat-parent-annotation-dock > .dsh-side-chat-quote {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  pointer-events: auto;
+}
+.dsh-side-chat-parent-user-message {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.dsh-side-chat-parent-user-message > .dsh-side-chat-quote { align-self: flex-end; }
+.dsh-side-chat-parent-user-message > .dsh-side-chat-quote .dsh-side-chat-quote-details {
+  right: 0;
+  left: auto;
+}
 .dsh-side-chat-draft {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -391,6 +463,78 @@
   border-radius: 0;
 }
 
+.dsh-side-chat-selection-marker {
+  position: fixed;
+  z-index: 91;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid var(--dsw-surface, #fff);
+  border-radius: 999px;
+  background: var(--dsw-alias-button-info, #1473e6);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.dsh-side-chat-selection-comment {
+  position: fixed;
+  z-index: 92;
+  display: grid;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dsw-border, #d8d8de);
+  border-radius: 20px;
+  background: var(--dsw-surface, #fff);
+  box-shadow: 0 5px 18px rgb(0 0 0 / 9%);
+  color: var(--dsw-text, #19191d);
+}
+.dsh-side-chat-selection-comment textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 128px;
+  box-sizing: border-box;
+  resize: none;
+  padding: 6px 8px;
+  overflow-y: auto;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+}
+.dsh-side-chat-selection-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dsh-side-chat-selection-comment-actions button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--dsw-border, #d8d8de);
+  border-radius: 999px;
+  background: var(--dsw-surface, #fff);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.dsh-side-chat-selection-comment-actions button:hover { background: var(--dsw-surface-subtle, #f3f3f5); }
+.dsh-side-chat-selection-comment-actions .dsh-side-chat-selection-comment-save {
+  border-color: transparent;
+  background: var(--dsw-alias-button-info, #1473e6);
+  color: #fff;
+}
+.dsh-side-chat-selection-comment-actions .dsh-side-chat-selection-comment-save:hover {
+  background: var(--dsw-alias-button-info-hover, #3467d6);
+}
+
 @media (max-width: 900px) {
   .dsh-side-chat-panel {
     right: 12px;
@@ -429,6 +573,7 @@
 }
 
 @media (forced-colors: active) {
-  .dsh-side-chat-panel,
-  .dsh-side-chat-selection-actions { border: 1px solid CanvasText; }
+.dsh-side-chat-panel,
+.dsh-side-chat-selection-actions,
+.dsh-side-chat-selection-comment { border: 1px solid CanvasText; }
 }

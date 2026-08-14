@@ -27,6 +27,11 @@ import type {
   SideChatWireError,
 } from '../../shared/contracts.js'
 import { SessionId as sideChatSessionId } from '../../shared/contracts.js'
+import {
+  addSelectionToConversation as addSelectionToParentComposer,
+  conversationAnnotations,
+  removeConversationAnnotations as removeParentConversationAnnotations,
+} from '../parent-composer/add-to-conversation.js'
 import type { Rc6ClientContext } from './context.js'
 
 const BINDING_WAIT_MS = 8_000
@@ -215,6 +220,32 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
         && node.anchorSeq === fragment.seq
         && locationSettled(node.location)
     })
+  }
+
+  /** Add one selected passage to the native composer of its parent Session. */
+  addSelectionToConversation(selection: ConversationSelection, comment?: string): boolean {
+    if (this.currentSessionId() !== selection.parentSessionId) return false
+    const scope = this.ctx.sessions.scope(dshSessionId(selection.parentSessionId))
+    if (scope === undefined) return false
+    return addSelectionToParentComposer(this.ctx.conversation.input.for(scope), selection, comment)
+  }
+
+  /** Number assigned to the next annotation shown beside the selected passage. */
+  nextConversationAnnotationNumber(): number {
+    const sessionId = this.currentSessionId()
+    if (sessionId === undefined) return 1
+    const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
+    if (scope === undefined) return 1
+    return conversationAnnotations(this.ctx.conversation.input.for(scope).state.getSnapshot()).length + 1
+  }
+
+  /** Remove the current Session's unsent selected-passage annotations. */
+  removeConversationAnnotations(): boolean {
+    const sessionId = this.currentSessionId()
+    if (sessionId === undefined) return false
+    const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
+    if (scope === undefined) return false
+    return removeParentConversationAnnotations(this.ctx.conversation.input.for(scope))
   }
 
   async retain(sessionId: SessionId): Promise<SideChatSessionLease> {

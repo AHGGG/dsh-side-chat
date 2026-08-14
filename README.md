@@ -6,7 +6,7 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 [简体中文](README.zh-CN.md)
 
-![Select text, open Side Chat, receive a Markdown reply, and close it with Escape](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![Select text, add an optional annotation, attach it to the main chat, and receive a Markdown reply](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## Install
 
@@ -30,18 +30,20 @@ Open the URL printed by DSH. The plugin loads automatically in the Web client.
 
 1. Complete at least one turn in the main conversation.
 2. Select text inside one completed user or assistant message.
-3. Click `More details` to send an explanation request immediately, or click `Ask in side chat` to write your own question.
-4. When writing your own question, press `Enter` to send it.
+3. Click `Add to chat` to add an optional comment before attaching the passage to the main composer, `More details` to send an explanation request immediately, or `Ask in side chat` to write a focused question.
+4. When writing your own message or question, press `Enter` to send it.
 5. Press `Esc` or click `×` when you are done.
 
 Useful details:
 
 - `Shift+Enter` inserts a newline.
+- After clicking `Add to chat`, press `Enter` or click `Save` to keep the annotation. Click outside the comment box or click `Cancel` to discard it.
+- `Add to chat` keeps any existing draft text and can collect multiple numbered passages, each with its own optional comment, in one annotation capsule.
 - The input grows with its content and becomes scrollable at its maximum height.
 - While a reply is running, the send icon becomes a stop button.
 - Assistant replies use DSH's native Markdown rendering.
-- Hover over `1 annotation` to preview the selected text.
-- Before the first send, hover over the annotation and click `×` to remove it.
+- Hover over `N annotations` to preview every selected passage and its comment.
+- Before sending, hover over the annotation capsule and click `×` to remove it; after sending, the same capsule appears above the user message.
 - The main conversation stays visible and is never switched to the child Session.
 
 ## What happens to the conversation
@@ -55,7 +57,7 @@ The parent and child share the same workspace. File changes, commands, and other
 ## Current limitations
 
 - A selection must stay inside one completed message.
-- Attachments, `Add to conversation`, and `/side` are not supported yet.
+- Attachments and `/side` are not supported yet.
 - Closed Side Chats cannot be reopened from the panel.
 - There is no automatic history cleanup or “keep as normal chat” action.
 - An archived child may briefly appear in normal Session lists.

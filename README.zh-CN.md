@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![选中文本、打开 Side Chat、查看 Markdown 回复并按 Escape 关闭](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![选中文本、添加可选批注、引用到主会话并查看 Markdown 回复](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## 安装
 
@@ -30,18 +30,20 @@ dsh web --port 3080
 
 1. 在主会话中至少完成一轮对话。
 2. 在一条已完成的用户或助手消息内选中文字。
-3. 点击 `More details` 可以立即发送详细解释请求；点击 `Ask in side chat` 可以自己输入问题。
-4. 自己输入问题时，按 `Enter` 发送。
+3. 点击 `Add to chat` 可以先填写一条可选批注，再把引用加入主会话输入框；点击 `More details` 可以立即发送详细解释请求；点击 `Ask in side chat` 可以自己输入聚焦问题。
+4. 自己输入消息或问题时，按 `Enter` 发送。
 5. 完成后按 `Esc`，或者点击 `×` 关闭。
 
 常用操作：
 
 - `Shift+Enter` 换行。
+- 点击 `Add to chat` 后，按 `Enter` 或点击 `Save` 保存 annotation；点击批注框外部或点击 `Cancel` 则直接取消。
+- `Add to chat` 会保留输入框中已有的草稿，并可把多段带序号的文本及各自的可选批注汇总到同一个 annotation 胶囊中。
 - 输入框会随内容自动增高，达到最大高度后在内部滚动。
 - 回复生成期间，发送图标会替换为停止按钮。
 - Assistant 回复使用 DSH 原生 Markdown 渲染。
-- hover `1 annotation` 可以预览所选文本。
-- 第一次发送前，可以 hover annotation 并点击 `×` 移除引用。
+- hover `N annotations` 可以预览每一段所选文本及对应批注。
+- 发送前可以 hover annotation 胶囊并点击 `×` 移除；发送后，同一个胶囊会显示在用户消息上方。
 - 主会话会一直保留在页面中，不会自动切换到 child Session。
 
 ## 会话和数据如何处理
@@ -55,7 +57,7 @@ dsh web --port 3080
 ## 当前限制
 
 - 选区必须位于同一条已完成消息内。
-- 暂不支持附件、`Add to conversation` 和 `/side`。
+- 暂不支持附件和 `/side`。
 - 关闭后不能从面板重新打开原 Side Chat。
 - 暂无自动历史清理或“保留为普通会话”操作。
 - 已归档的 child 可能短暂出现在普通会话列表中。

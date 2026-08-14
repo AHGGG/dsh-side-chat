@@ -1,32 +1,58 @@
-import { useRef, useState } from 'react'
-import type { ConversationSelection } from '../../shared/contracts.js'
+import { useEffect, useRef, useState } from 'react'
 import type { SideChatMessages } from './messages.js'
+
+export interface SelectionQuoteItem {
+  readonly text: string
+  readonly comment?: string
+}
 
 /** Selected passage displayed separately from the user's first question. */
 export function SelectionQuote({
-  selection,
+  selections,
   messages,
   onCopy,
   onRemove,
 }: {
-  readonly selection: ConversationSelection
+  readonly selections: readonly SelectionQuoteItem[]
   readonly messages: SideChatMessages
   readonly onCopy?: (text: string) => void
   readonly onRemove?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const quoteRef = useRef<HTMLElement>(null)
   const detailsRef = useRef<HTMLDivElement>(null)
+  const leaveTimerRef = useRef<number>()
 
-  const constrainDetailsToPanel = () => {
+  const keepHoverOpen = () => {
+    if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
+    leaveTimerRef.current = undefined
+    setHovered(true)
+  }
+
+  const closeHoverAfterGrace = () => {
+    if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
+    leaveTimerRef.current = window.setTimeout(() => {
+      leaveTimerRef.current = undefined
+      setHovered(false)
+    }, 220)
+  }
+
+  useEffect(() => () => {
+    if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
+  }, [])
+
+  const constrainDetailsToBoundary = () => {
     const details = detailsRef.current
-    const panel = quoteRef.current?.closest<HTMLElement>('.dsh-side-chat-panel')
-    if (details === null || panel === undefined || panel === null) return
+    const boundary = quoteRef.current?.closest<HTMLElement>(
+      '.dsh-side-chat-panel, [data-composer-seat], [data-chat-flow-kind]',
+    )
+    if (details === null) return
     details.style.setProperty('--dsh-side-chat-quote-offset-x', '0px')
     const detailsRect = details.getBoundingClientRect()
-    const panelRect = panel.getBoundingClientRect()
-    const leftEdge = panelRect.left + 16
-    const rightEdge = panelRect.right - 16
+    const boundaryRect = boundary?.getBoundingClientRect()
+    const leftEdge = (boundaryRect?.left ?? 0) + 16
+    const rightEdge = (boundaryRect?.right ?? window.innerWidth) - 16
     const offset = detailsRect.left < leftEdge
       ? leftEdge - detailsRect.left
       : detailsRect.right > rightEdge ? rightEdge - detailsRect.right : 0
@@ -39,8 +65,13 @@ export function SelectionQuote({
       className="dsh-side-chat-quote"
       aria-label={messages.selectedPassage}
       data-expanded={expanded || undefined}
-      onMouseEnter={constrainDetailsToPanel}
-      onFocusCapture={constrainDetailsToPanel}
+      data-hovered={hovered || undefined}
+      onMouseEnter={() => {
+        keepHoverOpen()
+        constrainDetailsToBoundary()
+      }}
+      onMouseLeave={closeHoverAfterGrace}
+      onFocusCapture={constrainDetailsToBoundary}
     >
       <div className="dsh-side-chat-quote-chip">
         <button
@@ -54,7 +85,7 @@ export function SelectionQuote({
             <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
             <path d="M8 8h8M8 12h5" />
           </svg>
-          <strong>{messages.selectionAttachment}</strong>
+          <strong>{messages.selectionAttachments(selections.length)}</strong>
         </button>
         {onRemove !== undefined && (
           <button
@@ -66,13 +97,23 @@ export function SelectionQuote({
         )}
       </div>
       <div ref={detailsRef} className="dsh-side-chat-quote-details" role="tooltip">
-        <div className="dsh-side-chat-quote-details-header">
-          <strong>1. {messages.selectionPreviewLabel}:</strong>
-          {onCopy !== undefined && (
-            <button type="button" onClick={() => { onCopy(selection.text) }}>{messages.copy}</button>
-          )}
-        </div>
-        <pre>{selection.text}</pre>
+        {selections.map((selection, index) => (
+          <div className="dsh-side-chat-quote-detail" key={`${String(index)}-${selection.text}`}>
+            <div className="dsh-side-chat-quote-details-header">
+              <strong>{String(index + 1)}. {messages.selectionPreviewLabel}:</strong>
+              {onCopy !== undefined && (
+                <button type="button" onClick={() => { onCopy(selection.text) }}>{messages.copy}</button>
+              )}
+            </div>
+            <pre>{selection.text}</pre>
+            {selection.comment !== undefined && (
+              <div className="dsh-side-chat-quote-comment">
+                <strong>{messages.selectionCommentLabel}:</strong>
+                <pre>{selection.comment}</pre>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </section>
   )

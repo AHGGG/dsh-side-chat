@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationSnapshot, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
 import { SideChatPanel } from '../../src/client/panel/SideChatPanel.js'
+import { annotatedUserMessageRenderer } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
 import { ArchivedConversation } from '../../src/client/rc6/ArchivedConversation.js'
 import { SelectionActions } from '../../src/client/selection/SelectionActions.js'
 import type { SideChatController } from '../../src/client/side-chat-controller.js'
@@ -28,18 +29,39 @@ const draftState: SideChatState = {
 afterEach(cleanup)
 
 describe('Side Chat components', () => {
-  it('offers More details before Ask in side chat', () => {
+  it('collects an optional comment before adding the selection to chat', () => {
+    const add = vi.fn()
     const ask = vi.fn()
     const moreDetails = vi.fn()
     const dismiss = vi.fn()
     render(<SelectionActions
       selection={selection}
+      onAddToChat={add}
       onMoreDetails={moreDetails}
       onAskInSideChat={ask}
       onDismiss={dismiss}
     />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons.map(button => button.textContent)).toEqual(['More details', 'Ask in side chat'])
+    expect(buttons.map(button => button.textContent)).toEqual(['Add to chat', 'More details', 'Ask in side chat'])
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+    expect(add).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
+      target: { value: 'This is the key line.' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Optional annotation comment' }), { key: 'Enter' })
+    expect(add).toHaveBeenCalledWith(selection, 'This is the key line.')
+    expect(dismiss).toHaveBeenCalledOnce()
+
+    cleanup()
+    render(<SelectionActions
+      selection={selection}
+      onAddToChat={add}
+      onMoreDetails={moreDetails}
+      onAskInSideChat={ask}
+      onDismiss={dismiss}
+    />)
+    dismiss.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'More details' }))
     expect(moreDetails).toHaveBeenCalledWith(selection)
     expect(dismiss).toHaveBeenCalledOnce()
@@ -54,6 +76,7 @@ describe('Side Chat components', () => {
     render(<SelectionActions
       selection={selection}
       askDisabledReason="Close the current Side Chat first"
+      onAddToChat={() => {}}
       onMoreDetails={() => {}}
       onAskInSideChat={() => {}}
       onDismiss={() => {}}
@@ -142,6 +165,79 @@ describe('Side Chat components', () => {
     fireEvent.mouseEnter(quote)
 
     expect(preview.style.getPropertyValue('--dsh-side-chat-quote-offset-x')).toBe('66px')
+  })
+
+  it('keeps the annotation preview open while the pointer crosses the popup gap', () => {
+    vi.useFakeTimers()
+    try {
+      render(<SideChatPanel
+        state={draftState}
+        onDraftChange={() => {}}
+        onFirstSend={async () => ({ ok: true, value: undefined })}
+        onClose={async () => ({ ok: true, value: undefined })}
+        onRetry={async () => ({ ok: true, value: undefined })}
+        onFocusParent={() => {}}
+      />)
+      const quote = screen.getByRole('region', { name: 'Selected passage' })
+      fireEvent.mouseEnter(quote)
+      fireEvent.mouseLeave(quote)
+      expect(quote).toHaveAttribute('data-hovered')
+      act(() => { vi.advanceTimersByTime(219) })
+      expect(quote).toHaveAttribute('data-hovered')
+      act(() => { vi.advanceTimersByTime(1) })
+      expect(quote).not.toHaveAttribute('data-hovered')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('renders sent main-chat annotations above the native user message', () => {
+    const NativeUserMessage = ({ node }: {
+      readonly node: { readonly data: { readonly content: readonly unknown[] } }
+    }) => (
+      <div data-testid="native-user-message">
+        {node.data.content.map(block => (
+          typeof block === 'object' && block !== null && 'text' in block
+            ? String((block as { readonly text: unknown }).text)
+            : ''
+        )).join('')}
+      </div>
+    )
+    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
+    render(<Renderer node={{
+      data: {
+        content: [{
+          type: 'text',
+          text: [
+            '<selected_context>',
+            '<annotation index="1">',
+            '<selected_text>',
+            'First passage',
+            '</selected_text>',
+            '<user_comment>',
+            'Explain this one first.',
+            '</user_comment>',
+            '</annotation>',
+            '<annotation index="2">',
+            'Second passage',
+            '</annotation>',
+            '</selected_context>',
+            '',
+            'Explain both.',
+          ].join('\n'),
+        }],
+      },
+    }} />)
+
+    expect(screen.getByRole('button', { name: 'Expand: Selected passage' }))
+      .toHaveTextContent('2 annotations')
+    expect(screen.getByTestId('native-user-message')).toHaveTextContent('Explain both.')
+    expect(screen.getByTestId('native-user-message')).not.toHaveTextContent('selected_context')
+    fireEvent.click(screen.getByRole('button', { name: 'Expand: Selected passage' }))
+    expect(screen.getByText('First passage')).toBeInTheDocument()
+    expect(screen.getByText('Explain this one first.')).toBeInTheDocument()
+    expect(screen.getByText('Second passage')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove annotation' })).not.toBeInTheDocument()
   })
 
   it('keeps a recoverable close error visible with one retry', () => {

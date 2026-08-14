@@ -41,6 +41,7 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       subscribeList: () => () => {},
       currentSessionId: () => SessionId('parent-1'),
       face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 1,
       notify: vi.fn(),
     }
     const controller = new SideChatController(
@@ -75,6 +76,7 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       subscribeList: () => () => {},
       currentSessionId: () => SessionId('parent-1'),
       face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 1,
       notify: vi.fn(),
     }
     const controller = new SideChatController(
@@ -102,6 +104,47 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     expect(captureMocks.capture).toHaveBeenCalledOnce()
   })
 
+  it('adds the selection to the parent composer without opening a Side Chat', async () => {
+    captureMocks.capture.mockResolvedValue(selectedPassage)
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+    const addSelectionToConversation = vi.fn(() => true)
+
+    const sessions = {
+      subscribeList: () => () => {},
+      currentSessionId: () => SessionId('parent-1'),
+      face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 2,
+      addSelectionToConversation,
+      notify: vi.fn(),
+    }
+    const controller = new SideChatController(
+      {} as SideChatRemote,
+      sessions as unknown as SideChatClientSessions,
+    )
+
+    render(<>
+      <div data-chat-flow />
+      <div data-composer-seat><textarea defaultValue="Existing draft" /></div>
+      <Rc6SideChatOverlay
+        controller={controller}
+        sessions={sessions as unknown as Rc6SideChatSessions}
+      />
+    </>)
+
+    fireEvent.mouseUp(document.body)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }))
+    expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
+      target: { value: 'My note' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Optional annotation comment' }), { key: 'Enter' })
+
+    expect(addSelectionToConversation).toHaveBeenCalledWith(selectedPassage, 'My note')
+    expect(screen.queryByRole('complementary', { name: 'Side Chat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveFocus()
+  })
+
   it('opens a Side Chat and immediately sends the More details prompt', async () => {
     captureMocks.capture.mockResolvedValue(selectedPassage)
     vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
@@ -110,6 +153,7 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       subscribeList: () => () => {},
       currentSessionId: () => SessionId('parent-1'),
       face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 1,
       notify: vi.fn(),
     }
     const controller = new SideChatController(
@@ -133,6 +177,43 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     expect(sendFirst).toHaveBeenCalledWith('Please explain the selected passage in more detail.')
     expect(screen.queryByRole('button', { name: 'More details' })).not.toBeInTheDocument()
     expect(screen.getByRole('complementary', { name: 'Side Chat' })).toBeInTheDocument()
+  })
+
+  it('cancels the optional annotation comment when clicking outside', async () => {
+    captureMocks.capture.mockResolvedValue(selectedPassage)
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+    const addSelectionToConversation = vi.fn(() => true)
+    const sessions = {
+      subscribeList: () => () => {},
+      currentSessionId: () => SessionId('parent-1'),
+      face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 1,
+      addSelectionToConversation,
+      notify: vi.fn(),
+    }
+    const controller = new SideChatController(
+      {} as SideChatRemote,
+      sessions as unknown as SideChatClientSessions,
+    )
+
+    render(<>
+      <div data-chat-flow />
+      <Rc6SideChatOverlay
+        controller={controller}
+        sessions={sessions as unknown as Rc6SideChatSessions}
+      />
+    </>)
+
+    fireEvent.mouseUp(document.body)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }))
+    expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+
+    fireEvent.mouseDown(document.body, { clientX: 600, clientY: 400 })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Add annotation comment' })).not.toBeInTheDocument()
+    })
+    expect(addSelectionToConversation).not.toHaveBeenCalled()
   })
 
   it('closes an open Side Chat with Escape', async () => {

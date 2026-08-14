@@ -4,8 +4,9 @@ export interface SideChatMessages {
   readonly placeholder: string
   readonly send: string
   readonly selectedPassage: string
-  readonly selectionAttachment: string
+  readonly selectionAttachments: (count: number) => string
   readonly selectionPreviewLabel: string
+  readonly selectionCommentLabel: string
   readonly removeSelection: string
   readonly expand: string
   readonly collapse: string
@@ -26,8 +27,9 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     placeholder: 'Ask about this in a Side Chat',
     send: 'Send',
     selectedPassage: 'Selected passage',
-    selectionAttachment: '1 annotation',
+    selectionAttachments: (count: number) => `${String(count)} ${count === 1 ? 'annotation' : 'annotations'}`,
     selectionPreviewLabel: 'Selected text',
+    selectionCommentLabel: 'User comment',
     removeSelection: 'Remove annotation',
     expand: 'Expand',
     collapse: 'Collapse',
@@ -46,8 +48,9 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     placeholder: '在侧边对话中询问这段内容',
     send: '发送',
     selectedPassage: '所选段落',
-    selectionAttachment: '1 条引用',
+    selectionAttachments: (count: number) => `${String(count)} 条引用`,
     selectionPreviewLabel: '所选文本',
+    selectionCommentLabel: '用户批注',
     removeSelection: '移除引用',
     expand: '展开',
     collapse: '收起',

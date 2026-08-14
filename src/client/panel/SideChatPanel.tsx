@@ -72,7 +72,7 @@ export function SideChatPanel({
           <form className="dsh-side-chat-draft" onSubmit={(event) => { void submit(event) }}>
             {state.selection !== undefined && (
               <SelectionQuote
-                selection={state.selection}
+                selections={[state.selection]}
                 messages={messages}
                 {...onCopySelection === undefined ? {} : { onCopy: onCopySelection }}
                 {...onRemoveSelection === undefined ? {} : { onRemove: onRemoveSelection }}
