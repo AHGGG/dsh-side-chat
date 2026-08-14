@@ -1,5 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { access } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
+
+const packageManifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const packageName = packageManifest.name
+if (typeof packageName !== 'string' || packageName.length === 0) {
+  throw new Error('package.json must declare a package name')
+}
 
 for (const path of [
   '../lib/index.js',
@@ -20,8 +26,8 @@ globalThis.window = globalThis
 globalThis.__ModuleLoader__ = { load(value) { handoff = value } }
 try {
   await import(new URL(`../lib/client.js?verify=${Date.now()}`, import.meta.url))
-  if (handoff?.id !== 'dsh-side-chat' || typeof handoff.factory !== 'function') {
-    throw new Error('client bundle did not register dsh-side-chat through __ModuleLoader__.load')
+  if (handoff?.id !== packageName || typeof handoff.factory !== 'function') {
+    throw new Error(`client bundle did not register ${packageName} through __ModuleLoader__.load`)
   }
   const modules = new Map([
     ['react', await import('react')],
@@ -53,6 +59,7 @@ const output = execFileSync(npmCommand.file, [
   encoding: 'utf8',
 })
 const manifest = JSON.parse(output)[0]
+if (manifest.name !== packageName) throw new Error(`packed package name ${String(manifest.name)} does not match ${packageName}`)
 const files = new Set(manifest.files.map(entry => entry.path))
 for (const required of [
   'package.json',

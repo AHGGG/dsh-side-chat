@@ -16,8 +16,7 @@
     "url": "https://github.com/AHGGG/dsh-side-chat/issues"
   },
   "publishConfig": {
-    "access": "public",
-    "tag": "alpha"
+    "access": "public"
   },
   "type": "module",
   "main": "lib/index.js",

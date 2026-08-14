@@ -12,7 +12,7 @@
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.1.0-rc.6
-dsh plugin --profile web add @ahggg/dsh-side-chat@0.1.0-alpha.1
+dsh plugin --profile web add @ahggg/dsh-side-chat
 ```
 
 从希望 Agent 操作的真实工程目录启动 DSH：
@@ -58,10 +58,10 @@ dsh web --port 3080
 
 ## 升级或卸载
 
-安装新的精确版本并重启 DSH：
+安装最新版本并重启 DSH：
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat@<version>
+dsh plugin --profile web add @ahggg/dsh-side-chat
 ```
 
 卸载插件：
@@ -84,20 +84,20 @@ pnpm clean-profile:verify
 构建并安装本地包：
 
 ```powershell
-npm pack
-dsh plugin --profile web add .\ahggg-dsh-side-chat-0.1.0-alpha.1.tgz
+$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
+dsh plugin --profile web add ".\$packageTarball"
 ```
 
 检查通过后发布：
 
 ```powershell
 npm pack --dry-run
-npm pack
+$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
 npm login
-npm publish .\ahggg-dsh-side-chat-0.1.0-alpha.1.tgz --access public --tag alpha
+npm publish ".\$packageTarball" --access public
 ```
 
-npm 只允许已存在的包配置 Trusted Publishing，所以 `0.1.0-alpha.1` 首版需要手动发布一次。发布成功后，在 npm 中为它配置 Trusted Publisher：
+在 npm 中为这个包完成一次 Trusted Publisher 配置：
 
 - Organization or user：`AHGGG`
 - Repository：`dsh-side-chat`
@@ -105,7 +105,7 @@ npm 只允许已存在的包配置 Trusted Publishing，所以 `0.1.0-alpha.1` �
 - Environment：`npm`
 - Allowed action：`npm publish`
 
-后续发布与 `pi-kanban` 一致：conventional commits 自动更新 release PR；合并 release PR 后创建 GitHub prerelease，并通过 OIDC 将对应版本发布到 npm 的 `alpha` tag，不需要配置 `NPM_TOKEN`。
+后续发布与 `pi-kanban` 一致：conventional commits 自动更新 release PR；合并 release PR 后创建 GitHub Release，并通过 OIDC 将对应版本发布到 npm，不需要配置 `NPM_TOKEN`。
 
 </details>
 

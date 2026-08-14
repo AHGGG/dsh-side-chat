@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { defineConfig } from 'tsdown'
 
-const PLUGIN_ID = 'dsh-side-chat'
+const PLUGIN_ID = '@ahggg/dsh-side-chat'
 const CSS_PREFIX = '\0dsh-side-chat-css:'
 const EXTERNALS = ['react', 'react/jsx-runtime']
 

@@ -121,6 +121,6 @@ jobs:
             echo "already-published=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish alpha package
+      - name: Publish package
         if: steps.registry.outputs.already-published != 'true'
-        run: npm publish --tag alpha
+        run: npm publish

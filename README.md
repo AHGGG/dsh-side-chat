@@ -12,7 +12,7 @@ Install DSH rc.6 if it is not already available, then add the plugin to the Web 
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.1.0-rc.6
-dsh plugin --profile web add @ahggg/dsh-side-chat@0.1.0-alpha.1
+dsh plugin --profile web add @ahggg/dsh-side-chat
 ```
 
 Start DSH from the project you want the agent to work in:
@@ -58,10 +58,10 @@ The parent and child share the same workspace. File changes, commands, and other
 
 ## Upgrade or remove
 
-Install the new exact plugin version and restart DSH:
+Install the latest version and restart DSH:
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat@<version>
+dsh plugin --profile web add @ahggg/dsh-side-chat
 ```
 
 Remove the plugin with:
@@ -84,20 +84,20 @@ pnpm clean-profile:verify
 Build and install a local package:
 
 ```powershell
-npm pack
-dsh plugin --profile web add .\ahggg-dsh-side-chat-0.1.0-alpha.1.tgz
+$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
+dsh plugin --profile web add ".\$packageTarball"
 ```
 
 Publish after the checks pass:
 
 ```powershell
 npm pack --dry-run
-npm pack
+$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
 npm login
-npm publish .\ahggg-dsh-side-chat-0.1.0-alpha.1.tgz --access public --tag alpha
+npm publish ".\$packageTarball" --access public
 ```
 
-The first release must be published manually because npm only allows Trusted Publishing to be configured for an existing package. After `0.1.0-alpha.1` exists, configure its npm Trusted Publisher with:
+Configure the package's npm Trusted Publisher once with:
 
 - Organization or user: `AHGGG`
 - Repository: `dsh-side-chat`
@@ -105,7 +105,7 @@ The first release must be published manually because npm only allows Trusted Pub
 - Environment: `npm`
 - Allowed action: `npm publish`
 
-Future releases follow the same flow as `pi-kanban`: conventional commits update a release pull request; merging that pull request creates the GitHub prerelease and publishes the matching npm version under the `alpha` tag through OIDC. No `NPM_TOKEN` secret is required.
+Future releases follow the same flow as `pi-kanban`: conventional commits update a release pull request; merging that pull request creates the GitHub Release and publishes the matching npm version through OIDC. No `NPM_TOKEN` secret is required.
 
 </details>
 

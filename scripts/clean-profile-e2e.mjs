@@ -29,7 +29,9 @@ try {
   ], { cwd: root, encoding: 'utf8' })
   const manifest = JSON.parse(packed)[0]
   if (manifest?.filename === undefined) throw new Error('npm pack did not report an artifact')
+  if (typeof manifest.name !== 'string' || manifest.name.length === 0) throw new Error('npm pack did not report a package name')
   const tarball = join(artifacts, manifest.filename)
+  const packageName = manifest.name
 
   await writeFile(join(profile, 'package.json'), JSON.stringify({
     name: 'dsh-side-chat-clean-profile',
@@ -46,14 +48,14 @@ try {
   ], { cwd: profile, stdio: 'inherit' })
 
   const probe = [
-    "await import('@ahggg/dsh-side-chat')",
-    "await import('@ahggg/dsh-side-chat/remote')",
-    "await import('@ahggg/dsh-side-chat/typert')",
+    `await import(${JSON.stringify(packageName)})`,
+    `await import(${JSON.stringify(`${packageName}/remote`)})`,
+    `await import(${JSON.stringify(`${packageName}/typert`)})`,
     'globalThis.window = globalThis',
     'let handoff',
     'globalThis.__ModuleLoader__ = { load(value) { handoff = value } }',
-    "await import('@ahggg/dsh-side-chat/client')",
-    "if (handoff?.id !== 'dsh-side-chat' || typeof handoff.factory !== 'function') throw new Error('client bundle did not register')",
+    `await import(${JSON.stringify(`${packageName}/client`)})`,
+    `if (handoff?.id !== ${JSON.stringify(packageName)} || typeof handoff.factory !== 'function') throw new Error('client bundle did not register the npm package name')`,
     "const modules = new Map([['react', await import('react')], ['react/jsx-runtime', await import('react/jsx-runtime')]])",
     "const client = handoff.factory(specifier => { if (!modules.has(specifier)) throw new Error('unexpected external ' + specifier); return modules.get(specifier) })",
     "if (typeof client?.apply !== 'function' || !Array.isArray(client.inject)) throw new Error('invalid client plugin surface')",

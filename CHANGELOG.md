@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-alpha.1 - Unreleased
+## 0.1.0-alpha.1 - 2026-08-14
 
 - Added `Ask in side chat` for stock DSH `0.1.0-rc.6`.
 - Added complete-prefix ordinary Session forks with inherited Agent options, presets, and workspace.
