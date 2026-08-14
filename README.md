@@ -60,10 +60,17 @@ The parent and child share the same workspace. File changes, commands, and other
 
 ## Upgrade or remove
 
-Install the latest version and restart DSH:
+Update to the latest stable version and restart DSH:
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat
+dsh plugin --profile web update @ahggg/dsh-side-chat --latest
+```
+
+Immediately after a release, pnpm may reuse stale registry metadata and leave an existing installation on an older version. Clear only this package's metadata cache, then retry the update:
+
+```powershell
+pnpm cache delete "@ahggg/dsh-side-chat"
+dsh plugin --profile web update @ahggg/dsh-side-chat --latest
 ```
 
 Remove the plugin with:

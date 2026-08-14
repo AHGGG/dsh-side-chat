@@ -60,10 +60,17 @@ dsh web --port 3080
 
 ## 升级或卸载
 
-安装最新版本并重启 DSH：
+升级到最新稳定版并重启 DSH：
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat
+dsh plugin --profile web update @ahggg/dsh-side-chat --latest
+```
+
+刚发布新版本时，pnpm 可能复用旧的 registry metadata，导致已有安装仍停留在旧版。只清理这个包的 metadata 缓存，然后重试升级：
+
+```powershell
+pnpm cache delete "@ahggg/dsh-side-chat"
+dsh plugin --profile web update @ahggg/dsh-side-chat --latest
 ```
 
 卸载插件：
