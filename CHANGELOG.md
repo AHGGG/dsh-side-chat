@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.3.0...v0.4.0) (2026-08-14)
+
+
+### Features
+
+* add annotated selections to main chat ([e485eae](https://github.com/AHGGG/dsh-side-chat/commit/e485eaebd0e009b00fec7d0d82c75011dbdcbba4))
+
+
+### Bug Fixes
+
+* polish annotation preview and demo ([e7196d8](https://github.com/AHGGG/dsh-side-chat/commit/e7196d8579a21e25042605f9d4de2f4e834bac8b))
+
 ## [0.3.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.2.0...v0.3.0) (2026-08-14)
 
 
