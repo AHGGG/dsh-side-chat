@@ -6,6 +6,8 @@
 
 [English](README.md)
 
+![选中文本、打开 Side Chat、提问并按 Escape 关闭](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+
 ## 安装
 
 如果尚未安装 DSH rc.6，先安装它，然后把插件添加到 Web profile：

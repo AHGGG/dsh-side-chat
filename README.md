@@ -6,6 +6,8 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 [简体中文](README.zh-CN.md)
 
+![Select text, open Side Chat, ask a question, and close it with Escape](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+
 ## Install
 
 Install DSH rc.6 if it is not already available, then add the plugin to the Web profile:
