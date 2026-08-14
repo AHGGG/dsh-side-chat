@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+lib/
+coverage/
+*.tgz
+.tmp-*/
+.DS_Store
+Thumbs.db
+.idea/
+
+# Internal working docs (not part of the published plugin)
+docs/adr/
+docs/assets/
+docs/architecture.md
+docs/codex-parity.md
+docs/lifecycle.md
+docs/plans/
