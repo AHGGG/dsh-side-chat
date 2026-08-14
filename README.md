@@ -6,7 +6,7 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 [简体中文](README.zh-CN.md)
 
-![Select text, open Side Chat, ask a question, and close it with Escape](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![Select text, open Side Chat, receive a Markdown reply, and close it with Escape](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## Install
 
@@ -30,14 +30,16 @@ Open the URL printed by DSH. The plugin loads automatically in the Web client.
 
 1. Complete at least one turn in the main conversation.
 2. Select text inside one completed user or assistant message.
-3. Click `Ask in side chat`.
-4. Enter a question and press `Enter` to send it.
+3. Click `More details` to send an explanation request immediately, or click `Ask in side chat` to write your own question.
+4. When writing your own question, press `Enter` to send it.
 5. Press `Esc` or click `×` when you are done.
 
 Useful details:
 
 - `Shift+Enter` inserts a newline.
 - The input grows with its content and becomes scrollable at its maximum height.
+- While a reply is running, the send icon becomes a stop button.
+- Assistant replies use DSH's native Markdown rendering.
 - Hover over `1 annotation` to preview the selected text.
 - Before the first send, hover over the annotation and click `×` to remove it.
 - The main conversation stays visible and is never switched to the child Session.

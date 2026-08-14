@@ -251,7 +251,7 @@
   box-shadow: 0 4px 14px rgb(0 0 0 / 8%);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(4px);
+  transform: translate(var(--dsh-side-chat-quote-offset-x, 0px), 4px);
   visibility: hidden;
   transition: opacity 100ms ease, transform 120ms ease, visibility 100ms ease;
 }
@@ -259,7 +259,7 @@
 .dsh-side-chat-quote:focus-within .dsh-side-chat-quote-details,
 .dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-details {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(var(--dsh-side-chat-quote-offset-x, 0px), 0);
   visibility: visible;
 }
 .dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-details { pointer-events: auto; }
@@ -372,17 +372,19 @@
   background: var(--dsw-surface, #fff);
   box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
   overflow: hidden;
-  transition: background-color 120ms ease;
 }
-.dsh-side-chat-selection-actions:hover,
-.dsh-side-chat-selection-actions:focus-within { background: var(--dsw-surface-subtle, #f3f3f5); }
 .dsh-side-chat-selection-actions button {
   min-height: 36px;
   padding: 0 14px;
   border: 0;
-  border-radius: inherit;
+  border-radius: 0;
   background: transparent;
   color: inherit;
+  transition: background-color 120ms ease;
+}
+.dsh-side-chat-selection-actions button:hover:not(:disabled),
+.dsh-side-chat-selection-actions button:focus-visible {
+  background: var(--dsw-surface-subtle, #f3f3f5);
 }
 .dsh-side-chat-selection-actions button + button {
   border-left: 1px solid var(--dsw-border, #d8d8de);

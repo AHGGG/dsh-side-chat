@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![选中文本、打开 Side Chat、提问并按 Escape 关闭](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![选中文本、打开 Side Chat、查看 Markdown 回复并按 Escape 关闭](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## 安装
 
@@ -30,14 +30,16 @@ dsh web --port 3080
 
 1. 在主会话中至少完成一轮对话。
 2. 在一条已完成的用户或助手消息内选中文字。
-3. 点击 `Ask in side chat`。
-4. 输入问题，按 `Enter` 发送。
+3. 点击 `More details` 可以立即发送详细解释请求；点击 `Ask in side chat` 可以自己输入问题。
+4. 自己输入问题时，按 `Enter` 发送。
 5. 完成后按 `Esc`，或者点击 `×` 关闭。
 
 常用操作：
 
 - `Shift+Enter` 换行。
 - 输入框会随内容自动增高，达到最大高度后在内部滚动。
+- 回复生成期间，发送图标会替换为停止按钮。
+- Assistant 回复使用 DSH 原生 Markdown 渲染。
 - hover `1 annotation` 可以预览所选文本。
 - 第一次发送前，可以 hover annotation 并点击 `×` 移除引用。
 - 主会话会一直保留在页面中，不会自动切换到 child Session。

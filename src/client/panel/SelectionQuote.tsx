@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ConversationSelection } from '../../shared/contracts.js'
 import type { SideChatMessages } from './messages.js'
 
@@ -15,8 +15,33 @@ export function SelectionQuote({
   readonly onRemove?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const quoteRef = useRef<HTMLElement>(null)
+  const detailsRef = useRef<HTMLDivElement>(null)
+
+  const constrainDetailsToPanel = () => {
+    const details = detailsRef.current
+    const panel = quoteRef.current?.closest<HTMLElement>('.dsh-side-chat-panel')
+    if (details === null || panel === undefined || panel === null) return
+    details.style.setProperty('--dsh-side-chat-quote-offset-x', '0px')
+    const detailsRect = details.getBoundingClientRect()
+    const panelRect = panel.getBoundingClientRect()
+    const leftEdge = panelRect.left + 16
+    const rightEdge = panelRect.right - 16
+    const offset = detailsRect.left < leftEdge
+      ? leftEdge - detailsRect.left
+      : detailsRect.right > rightEdge ? rightEdge - detailsRect.right : 0
+    details.style.setProperty('--dsh-side-chat-quote-offset-x', `${String(offset)}px`)
+  }
+
   return (
-    <section className="dsh-side-chat-quote" aria-label={messages.selectedPassage} data-expanded={expanded || undefined}>
+    <section
+      ref={quoteRef}
+      className="dsh-side-chat-quote"
+      aria-label={messages.selectedPassage}
+      data-expanded={expanded || undefined}
+      onMouseEnter={constrainDetailsToPanel}
+      onFocusCapture={constrainDetailsToPanel}
+    >
       <div className="dsh-side-chat-quote-chip">
         <button
           type="button"
@@ -40,7 +65,7 @@ export function SelectionQuote({
           >×</button>
         )}
       </div>
-      <div className="dsh-side-chat-quote-details" role="tooltip">
+      <div ref={detailsRef} className="dsh-side-chat-quote-details" role="tooltip">
         <div className="dsh-side-chat-quote-details-header">
           <strong>1. {messages.selectionPreviewLabel}:</strong>
           {onCopy !== undefined && (

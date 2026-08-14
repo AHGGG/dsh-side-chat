@@ -123,6 +123,27 @@ describe('Side Chat components', () => {
     expect(remove).toHaveBeenCalledOnce()
   })
 
+  it('keeps the selection preview inside the Side Chat panel', () => {
+    render(<SideChatPanel
+      state={draftState}
+      onDraftChange={() => {}}
+      onFirstSend={async () => ({ ok: true, value: undefined })}
+      onClose={async () => ({ ok: true, value: undefined })}
+      onRetry={async () => ({ ok: true, value: undefined })}
+      onFocusParent={() => {}}
+    />)
+
+    const panel = screen.getByRole('complementary', { name: 'Side Chat' })
+    const quote = screen.getByRole('region', { name: 'Selected passage' })
+    const preview = screen.getByRole('tooltip')
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 700 } as DOMRect)
+    vi.spyOn(preview, 'getBoundingClientRect').mockReturnValue({ left: 50, right: 570 } as DOMRect)
+
+    fireEvent.mouseEnter(quote)
+
+    expect(preview.style.getPropertyValue('--dsh-side-chat-quote-offset-x')).toBe('66px')
+  })
+
   it('keeps a recoverable close error visible with one retry', () => {
     render(<SideChatPanel
       state={{
