@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.0...v0.4.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* stabilize side chat tool rendering ([48e356a](https://github.com/AHGGG/dsh-side-chat/commit/48e356a747446e6908b473c7204355202bbd87aa))
+
 ## [0.4.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.3.0...v0.4.0) (2026-08-14)
 
 
