@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.2.0-alpha.1...v0.2.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* release stable version ([653bda6](https://github.com/AHGGG/dsh-side-chat/commit/653bda66c85c64a18abc88301e1ef5bd41e44963))
+
 ## [0.2.0-alpha.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.1.0-alpha.1...v0.2.0-alpha.1) (2026-08-14)
 
 
