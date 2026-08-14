@@ -72,45 +72,6 @@ Remove the plugin with:
 dsh plugin --profile web remove @ahggg/dsh-side-chat
 ```
 
-<details>
-<summary>Local development and publishing</summary>
-
-Requires Node.js `^22.19.0 || >=24.0.0` and pnpm `11.7.0`.
-
-```powershell
-pnpm install --frozen-lockfile
-pnpm check
-pnpm clean-profile:verify
-```
-
-Build and install a local package:
-
-```powershell
-$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
-dsh plugin --profile web add ".\$packageTarball"
-```
-
-Publish after the checks pass:
-
-```powershell
-npm pack --dry-run
-$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
-npm login
-npm publish ".\$packageTarball" --access public
-```
-
-Configure the package's npm Trusted Publisher once with:
-
-- Organization or user: `AHGGG`
-- Repository: `dsh-side-chat`
-- Workflow: `release.yml`
-- Environment: `npm`
-- Allowed action: `npm publish`
-
-Future releases follow the same flow as `pi-kanban`: conventional commits update a release pull request; merging that pull request creates the GitHub Release and publishes the matching npm version through OIDC. No `NPM_TOKEN` secret is required.
-
-</details>
-
 ## License
 
 MIT

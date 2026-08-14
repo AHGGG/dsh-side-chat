@@ -72,45 +72,6 @@ dsh plugin --profile web add @ahggg/dsh-side-chat
 dsh plugin --profile web remove @ahggg/dsh-side-chat
 ```
 
-<details>
-<summary>本地开发与发布</summary>
-
-要求 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.7.0`。
-
-```powershell
-pnpm install --frozen-lockfile
-pnpm check
-pnpm clean-profile:verify
-```
-
-构建并安装本地包：
-
-```powershell
-$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
-dsh plugin --profile web add ".\$packageTarball"
-```
-
-检查通过后发布：
-
-```powershell
-npm pack --dry-run
-$packageTarball = (npm pack --ignore-scripts --json | ConvertFrom-Json).filename
-npm login
-npm publish ".\$packageTarball" --access public
-```
-
-在 npm 中为这个包完成一次 Trusted Publisher 配置：
-
-- Organization or user：`AHGGG`
-- Repository：`dsh-side-chat`
-- Workflow：`release.yml`
-- Environment：`npm`
-- Allowed action：`npm publish`
-
-后续发布与 `pi-kanban` 一致：conventional commits 自动更新 release PR；合并 release PR 后创建 GitHub Release，并通过 OIDC 将对应版本发布到 npm，不需要配置 `NPM_TOKEN`。
-
-</details>
-
 ## 许可证
 
 MIT
