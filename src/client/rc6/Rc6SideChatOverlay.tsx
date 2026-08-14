@@ -158,11 +158,6 @@ export function Rc6SideChatOverlay({
   const childFace = state.childSessionId === undefined ? undefined : sessions.face(state.childSessionId)
   const inheritedThroughSeq = state.inheritedThroughSeq
   const locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' as const : 'en' as const
-  const copySelection = (text: string): void => {
-    void navigator.clipboard.writeText(text).catch(() => {
-      sessions.notify({ kind: 'warning', text: 'Could not copy the selected text.' })
-    })
-  }
 
   return (
     <div className="dsh-side-chat-overlay">
@@ -212,7 +207,6 @@ export function Rc6SideChatOverlay({
                     controller={controller}
                     {...state.selection === undefined ? {} : { selection: state.selection }}
                     locale={locale}
-                    onCopySelection={copySelection}
                   />
                 ),
               }}
@@ -223,7 +217,6 @@ export function Rc6SideChatOverlay({
           onFocusParent={() => {
             if (state.parentSessionId !== undefined) void sessions.openSession(state.parentSessionId)
           }}
-          onCopySelection={copySelection}
           onRemoveSelection={() => { controller.clearSelection() }}
         />
       )}

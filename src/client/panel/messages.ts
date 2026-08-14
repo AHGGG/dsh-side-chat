@@ -10,7 +10,6 @@ export interface SideChatMessages {
   readonly removeSelection: string
   readonly expand: string
   readonly collapse: string
-  readonly copy: string
   readonly temporary: string
   readonly referenceOnly: string
   readonly cannotReopen: string
@@ -33,7 +32,6 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     removeSelection: 'Remove annotation',
     expand: 'Expand',
     collapse: 'Collapse',
-    copy: 'Copy',
     temporary: 'Archived when closed; history remains on disk',
     referenceOnly: 'Inherits the complete parent conversation prefix',
     cannotReopen: 'No reopen action',
@@ -54,7 +52,6 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     removeSelection: '移除引用',
     expand: '展开',
     collapse: '收起',
-    copy: '复制',
     temporary: '关闭时归档；历史仍保存在磁盘上',
     referenceOnly: '完整继承父会话对话前缀',
     cannotReopen: '不提供重新打开操作',

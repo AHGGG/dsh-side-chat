@@ -6,7 +6,7 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 [简体中文](README.zh-CN.md)
 
-![Select text, add an optional annotation, attach it to the main chat, and receive a Markdown reply](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![Ask about selected text in Side Chat, then add an annotated selection to the main chat](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## Install
 

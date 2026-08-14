@@ -10,12 +10,10 @@ export interface SelectionQuoteItem {
 export function SelectionQuote({
   selections,
   messages,
-  onCopy,
   onRemove,
 }: {
   readonly selections: readonly SelectionQuoteItem[]
   readonly messages: SideChatMessages
-  readonly onCopy?: (text: string) => void
   readonly onRemove?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -101,9 +99,6 @@ export function SelectionQuote({
           <div className="dsh-side-chat-quote-detail" key={`${String(index)}-${selection.text}`}>
             <div className="dsh-side-chat-quote-details-header">
               <strong>{String(index + 1)}. {messages.selectionPreviewLabel}:</strong>
-              {onCopy !== undefined && (
-                <button type="button" onClick={() => { onCopy(selection.text) }}>{messages.copy}</button>
-              )}
             </div>
             <pre>{selection.text}</pre>
             {selection.comment !== undefined && (

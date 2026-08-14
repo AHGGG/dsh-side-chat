@@ -286,16 +286,6 @@
 }
 .dsh-side-chat-quote-details-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dsh-side-chat-quote-details-header strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
-.dsh-side-chat-quote-details-header button {
-  min-height: 28px;
-  padding-inline: 10px;
-  border: 1px solid var(--side-chat-border);
-  border-radius: 999px;
-  background: var(--side-chat-bg);
-  color: inherit;
-  cursor: pointer;
-  font-size: 13px;
-}
 .dsh-side-chat-quote-detail + .dsh-side-chat-quote-detail {
   margin-top: 12px;
   padding-top: 12px;

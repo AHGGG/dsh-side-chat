@@ -41,11 +41,6 @@ function currentLocale(): Locale {
   return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
 }
 
-function copyText(text: string): void {
-  if (navigator.clipboard === undefined) return
-  void navigator.clipboard.writeText(text).catch(() => undefined)
-}
-
 /** The interactive annotation capsule occupying the reserved first composer row. */
 export function ParentComposerAnnotations({
   input,
@@ -63,7 +58,6 @@ export function ParentComposerAnnotations({
       <SelectionQuote
         selections={annotations}
         messages={SIDE_CHAT_MESSAGES[locale]}
-        onCopy={copyText}
         onRemove={onRemove}
       />
     </div>
@@ -113,7 +107,6 @@ export function annotatedUserMessageRenderer(Original: UserNodeRenderer): (props
         <SelectionQuote
           selections={parsed.annotations}
           messages={SIDE_CHAT_MESSAGES[currentLocale()]}
-          onCopy={copyText}
         />
         {createElement(Original, { ...props, node })}
       </div>

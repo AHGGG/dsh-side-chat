@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![选中文本、添加可选批注、引用到主会话并查看 Markdown 回复](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![先在 Side Chat 中询问选中文本，再把带批注的选区加入主会话](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## 安装
 

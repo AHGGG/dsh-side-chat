@@ -237,6 +237,7 @@ describe('Side Chat components', () => {
     expect(screen.getByText('First passage')).toBeInTheDocument()
     expect(screen.getByText('Explain this one first.')).toBeInTheDocument()
     expect(screen.getByText('Second passage')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove annotation' })).not.toBeInTheDocument()
   })
 

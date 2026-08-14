@@ -259,14 +259,12 @@ export function ArchivedConversation({
   controller,
   selection,
   locale = 'en',
-  onCopySelection,
 }: {
   readonly face: SessionFace
   readonly inheritedThroughSeq: number
   readonly controller: SideChatController
   readonly selection?: ConversationSelection
   readonly locale?: 'en' | 'zh-CN'
-  readonly onCopySelection?: (text: string) => void
 }) {
   const snapshot = useSyncExternalStore(
     listener => face.subscribe(listener),
@@ -317,7 +315,6 @@ export function ArchivedConversation({
                 <SelectionQuote
                   selections={[selection]}
                   messages={SIDE_CHAT_MESSAGES[locale]}
-                  {...onCopySelection === undefined ? {} : { onCopy: onCopySelection }}
                 />
                 <MessageRow node={node} />
               </div>

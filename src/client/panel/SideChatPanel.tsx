@@ -18,7 +18,6 @@ export interface SideChatPanelProps {
   readonly onClose: () => Promise<SideChatActionResult<void>>
   readonly onRetry: () => Promise<SideChatActionResult<unknown>>
   readonly onFocusParent: () => void
-  readonly onCopySelection?: (text: string) => void
   readonly onRemoveSelection?: () => void
 }
 
@@ -31,7 +30,6 @@ export function SideChatPanel({
   onClose,
   onRetry,
   onFocusParent,
-  onCopySelection,
   onRemoveSelection,
 }: SideChatPanelProps) {
   const messages = SIDE_CHAT_MESSAGES[locale]
@@ -74,7 +72,6 @@ export function SideChatPanel({
               <SelectionQuote
                 selections={[state.selection]}
                 messages={messages}
-                {...onCopySelection === undefined ? {} : { onCopy: onCopySelection }}
                 {...onRemoveSelection === undefined ? {} : { onRemove: onRemoveSelection }}
               />
             )}
