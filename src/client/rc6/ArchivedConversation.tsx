@@ -12,6 +12,7 @@ import type {
   ConversationNode,
   PendingInteraction,
   QueuedMessage,
+  RunningToolCall,
   SessionFace,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContentBlock } from '@deepseek-ai/dsh-api-remotes/client'
@@ -44,14 +45,157 @@ function contentText(content: readonly ContentBlock[]): string {
   }).filter(Boolean).join('\n')
 }
 
+function toolOutputText(content: readonly ContentBlock[]): string {
+  const text = contentText(content)
+  const fileEnvelope = /^<path>[\s\S]*?<\/path>\s*<type>[\s\S]*?<\/type>\s*<content>\s*\n?([\s\S]*?)\n?<\/content>\s*$/u.exec(text)
+  return fileEnvelope?.[1]?.trimEnd() ?? text
+}
+
 function firstSideChatQuestion(text: string): string {
   const match = /<user_question>([\s\S]*?)<\/user_question>/u.exec(text)
   return match?.[1]?.trim() ?? text
 }
 
-function AssistantBlocks({ blocks, streaming = false }: {
+type ToolResultNode = Extract<ConversationNode, { kind: 'tool-result' }>
+type ToolState = 'pending' | 'running' | 'success' | 'error' | 'interrupted'
+
+function parsedToolArguments(argsRaw: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(argsRaw)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function displayToolName(name: string): string {
+  if (name.toLowerCase() === 'pwsh') return 'Pwsh'
+  return name
+    .split(/[-_\s]+/u)
+    .filter(Boolean)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
+function toolSummary(name: string, argsRaw: string): string | null {
+  const args = parsedToolArguments(argsRaw)
+  if (args === null) return null
+  const normalizedName = name.toLowerCase()
+  const candidates = normalizedName === 'pwsh'
+    ? ['description', 'command']
+    : normalizedName === 'grep'
+      ? ['pattern', 'path']
+      : ['file_path', 'path', 'pattern', 'query', 'url', 'command', 'description']
+  for (const key of candidates) {
+    const value = args[key]
+    if (typeof value !== 'string' || value.trim().length === 0) continue
+    if (key === 'file_path') {
+      const segments = value.split(/[\\/]/u)
+      return segments.at(-1) ?? value
+    }
+    return value
+  }
+  return null
+}
+
+function formattedToolArguments(argsRaw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(argsRaw), null, 2)
+  } catch {
+    return argsRaw
+  }
+}
+
+function ToolCard({
+  callId,
+  name,
+  argsRaw,
+  state,
+  output,
+}: {
+  readonly callId: string
+  readonly name: string
+  readonly argsRaw: string
+  readonly state: ToolState
+  readonly output?: string
+}) {
+  const [expanded, setExpanded] = useState(state === 'error')
+  useEffect(() => {
+    if (state === 'error') setExpanded(true)
+  }, [state])
+  const summary = toolSummary(name, argsRaw)
+  const label = state === 'running'
+    ? `Running tool · ${displayToolName(name)}`
+    : state === 'error'
+      ? `Tool failed · ${displayToolName(name)}`
+      : state === 'interrupted'
+        ? `Tool stopped · ${displayToolName(name)}`
+        : `Tool · ${displayToolName(name)}`
+  return (
+    <section
+      className="dsh-side-chat-tool"
+      data-call-id={callId}
+      data-state={state}
+      data-expanded={expanded || undefined}
+    >
+      <button
+        type="button"
+        className="dsh-side-chat-tool-toggle"
+        aria-label={label}
+        aria-expanded={expanded}
+        onClick={() => { setExpanded(current => !current) }}
+      >
+        <span className="dsh-side-chat-tool-status" aria-hidden="true" />
+        <span className="dsh-side-chat-tool-name">{displayToolName(name)}</span>
+        {summary !== null && <span className="dsh-side-chat-tool-summary">{summary}</span>}
+        <span className="dsh-side-chat-tool-state">{state === 'running' ? 'Running' : state === 'error' ? 'Failed' : state === 'interrupted' ? 'Stopped' : ''}</span>
+      </button>
+      {expanded && (
+        <div className="dsh-side-chat-tool-body">
+          <section>
+            <strong>Input</strong>
+            <pre>{formattedToolArguments(argsRaw)}</pre>
+          </section>
+          {output !== undefined && (
+            <section>
+              <strong>Output</strong>
+              <pre>{output}</pre>
+            </section>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ToolResultCard({ node }: { readonly node: ToolResultNode }) {
+  const output = toolOutputText(node.content)
+  const errorIdentity = `${node.error?.name ?? ''} ${node.error?.code ?? ''} ${output}`
+  const state: ToolState = node.isError
+    ? /\b(?:aborted|cancelled|canceled)\b/iu.test(errorIdentity) ? 'interrupted' : 'error'
+    : 'success'
+  return (
+    <ToolCard
+      callId={node.callId}
+      name={node.call?.name ?? node.callId}
+      argsRaw={node.call?.argsRaw ?? '{}'}
+      state={state}
+      output={output}
+    />
+  )
+}
+
+function RunningToolCard({ call }: { readonly call: RunningToolCall }) {
+  return <ToolCard callId={call.callId} name={call.name} argsRaw={call.argsRaw} state="running" />
+}
+
+function AssistantBlocks({ blocks, streaming = false, projectedToolCallIds, unprojectedToolState = 'pending' }: {
   readonly blocks: readonly AssistantBlock[]
   readonly streaming?: boolean
+  readonly projectedToolCallIds: ReadonlySet<string>
+  readonly unprojectedToolState?: Extract<ToolState, 'pending' | 'running' | 'interrupted'>
 }) {
   return <>{blocks.map((block, index) => {
     const key = `${block.kind}-${String(index)}`
@@ -61,13 +205,25 @@ function AssistantBlocks({ blocks, streaming = false }: {
     }
     if (block.kind === 'image') return <div key={key}>[Image attachment]</div>
     if (block.kind === 'tool-call') {
-      return <details key={key} className="dsh-side-chat-tool"><summary>Tool · {block.name}</summary><pre>{block.argsRaw}</pre></details>
+      if (projectedToolCallIds.has(block.callId)) return null
+      return (
+        <ToolCard
+          key={key}
+          callId={block.callId}
+          name={block.name}
+          argsRaw={block.argsRaw}
+          state={unprojectedToolState}
+        />
+      )
     }
     return <pre key={key}>{stringify(block.block)}</pre>
   })}</>
 }
 
-function MessageRow({ node }: { readonly node: ConversationNode }) {
+function MessageRow({ node, projectedToolCallIds }: {
+  readonly node: ConversationNode
+  readonly projectedToolCallIds: ReadonlySet<string>
+}) {
   if (node.kind === 'user' || node.kind === 'steering') {
     return (
       <article className="dsh-side-chat-message" data-role="user">
@@ -80,7 +236,11 @@ function MessageRow({ node }: { readonly node: ConversationNode }) {
     return (
       <article className="dsh-side-chat-message" data-role="assistant">
         <span className="dsh-side-chat-message-role">Assistant</span>
-        <AssistantBlocks blocks={node.blocks} />
+        <AssistantBlocks
+          blocks={node.blocks}
+          projectedToolCallIds={projectedToolCallIds}
+          unprojectedToolState={node.interrupted === true ? 'interrupted' : 'pending'}
+        />
         {node.interrupted === true && <span className="dsh-side-chat-message-note">Stopped</span>}
       </article>
     )
@@ -94,12 +254,7 @@ function MessageRow({ node }: { readonly node: ConversationNode }) {
     )
   }
   if (node.kind === 'tool-result') {
-    return (
-      <details className="dsh-side-chat-message dsh-side-chat-tool" open={node.isError || undefined}>
-        <summary>{node.isError ? 'Tool failed' : 'Tool result'} · {node.call?.name ?? node.callId}</summary>
-        <pre>{contentText(node.content)}</pre>
-      </details>
-    )
+    return <ToolResultCard node={node} />
   }
   if (node.kind === 'turn-error') {
     return <div className="dsh-side-chat-turn-notice" role="alert">{node.message}</div>
@@ -279,6 +434,11 @@ export function ArchivedConversation({
     () => snapshot.nodes.filter(node => node.seq > inheritedThroughSeq),
     [snapshot.nodes, inheritedThroughSeq],
   )
+  const runningCalls = snapshot.runningCalls ?? []
+  const projectedToolCallIds = useMemo(() => new Set([
+    ...nodes.filter((node): node is ToolResultNode => node.kind === 'tool-result').map(node => node.callId),
+    ...runningCalls.map(call => call.callId),
+  ]), [nodes, runningCalls])
   const annotatedUserNode = selection === undefined
     ? undefined
     : nodes.find(node => node.kind === 'user' || node.kind === 'steering')
@@ -316,20 +476,23 @@ export function ArchivedConversation({
                   selections={[selection]}
                   messages={SIDE_CHAT_MESSAGES[locale]}
                 />
-                <MessageRow node={node} />
+                <MessageRow node={node} projectedToolCallIds={projectedToolCallIds} />
               </div>
             )
-          : <MessageRow key={`${node.kind}-${String(node.seq)}`} node={node} />)}
+          : <MessageRow key={`${node.kind}-${String(node.seq)}`} node={node} projectedToolCallIds={projectedToolCallIds} />)}
         {snapshot.partial !== null && (
           <article className="dsh-side-chat-message" data-role="assistant">
             <span className="dsh-side-chat-message-role">Assistant</span>
-            <AssistantBlocks blocks={snapshot.partial.blocks} streaming />
+            <AssistantBlocks
+              blocks={snapshot.partial.blocks}
+              streaming
+              projectedToolCallIds={projectedToolCallIds}
+              unprojectedToolState="running"
+            />
           </article>
         )}
-        {snapshot.runningCalls.map(call => (
-          <details key={call.callId} className="dsh-side-chat-message dsh-side-chat-tool">
-            <summary>Running tool · {call.name}</summary><pre>{call.argsRaw}</pre>
-          </details>
+        {runningCalls.map(call => (
+          <RunningToolCard key={call.callId} call={call} />
         ))}
         <PendingCards pending={snapshot.pending} controller={controller} />
         <QueueRows queue={snapshot.queue} controller={controller} />

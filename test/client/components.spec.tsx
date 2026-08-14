@@ -413,4 +413,239 @@ describe('Side Chat components', () => {
     expect(screen.getAllByRole('listitem').map(item => item.textContent))
       .toEqual(['First item', 'Second item'])
   })
+
+  it('merges a completed tool call and result into one expandable row', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'assistant',
+        seq: 8,
+        blocks: [{
+          kind: 'tool-call',
+          callId: 'call-read-1',
+          name: 'read',
+          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\package.json"}',
+        }],
+        interrupted: false,
+      }, {
+        kind: 'tool-result',
+        seq: 9,
+        callId: 'call-read-1',
+        call: {
+          name: 'read',
+          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\package.json"}',
+        },
+        callTime: 1,
+        content: [{
+          type: 'text',
+          text: '<path>E:\\github\\dsh-side-chat\\package.json</path>\n<type>file</type>\n<content>\n{"name":"@ahggg/dsh-side-chat"}\n</content>',
+        }],
+        isError: false,
+        callView: null,
+        resultView: null,
+        subCalls: [],
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    const rows = container.querySelectorAll('[data-call-id="call-read-1"]')
+    expect(rows).toHaveLength(1)
+    const row = rows[0] as HTMLElement
+    expect(row).toHaveAttribute('data-state', 'success')
+    expect(screen.getByRole('button', { name: 'Tool · Read' })).toHaveTextContent('Readpackage.json')
+    expect(row).not.toHaveAttribute('data-expanded')
+    fireEvent.click(screen.getByRole('button', { name: 'Tool · Read' }))
+    expect(row).toHaveAttribute('data-expanded')
+    expect(screen.getByText('Input')).toBeInTheDocument()
+    expect(screen.getByText('Output')).toBeInTheDocument()
+    expect(screen.getByText('{"name":"@ahggg/dsh-side-chat"}')).toBeInTheDocument()
+    expect(screen.queryByText(/<path>/u)).not.toBeInTheDocument()
+  })
+
+  it('renders an in-flight call once while the assistant is streaming', () => {
+    const call = {
+      callId: 'call-grep-1',
+      name: 'grep',
+      argsRaw: '{"pattern":"runningCalls","path":"src"}',
+      turn: 1,
+      step: 1,
+      time: 1,
+      callView: null,
+      subCalls: [],
+    }
+    const snapshot = {
+      nodes: [],
+      openState: 'open',
+      partial: { turn: 1, step: 1, blocks: [{ kind: 'tool-call', ...call }] },
+      pending: [],
+      queue: [],
+      runningCalls: [call],
+      running: true,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    expect(container.querySelectorAll('[data-call-id="call-grep-1"]')).toHaveLength(1)
+    expect(container.querySelector('[data-call-id="call-grep-1"]')).toHaveAttribute('data-state', 'running')
+    expect(screen.getByRole('button', { name: 'Running tool · Grep' })).toHaveTextContent('GreprunningCallsRunning')
+  })
+
+  it('opens failed tool output by default without breaking long text wrapping', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'tool-result',
+        seq: 8,
+        callId: 'call-read-error',
+        call: { name: 'read', argsRaw: '{"file_path":"missing-file.txt"}' },
+        callTime: 1,
+        content: [{ type: 'text', text: 'File not found: missing-file.txt' }],
+        isError: true,
+        callView: null,
+        resultView: null,
+        subCalls: [],
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    const row = container.querySelector('[data-call-id="call-read-error"]')
+    expect(row).toHaveAttribute('data-state', 'error')
+    expect(row).toHaveAttribute('data-expanded')
+    expect(screen.getByRole('button', { name: 'Tool failed · Read' })).toHaveTextContent('Failed')
+    expect(screen.getByText('File not found: missing-file.txt')).toBeInTheDocument()
+  })
+
+  it('distinguishes a user-stopped tool from a failed tool', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'tool-result',
+        seq: 8,
+        callId: 'call-pwsh-stopped',
+        call: { name: 'pwsh', argsRaw: '{"command":"Start-Sleep -Seconds 8"}' },
+        callTime: 1,
+        content: [{ type: 'text', text: 'Error: tool call aborted' }],
+        isError: true,
+        error: { name: 'AbortError', code: 'TOOL_CALL_ABORTED' },
+        callView: null,
+        resultView: null,
+        subCalls: [],
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    const row = container.querySelector('[data-call-id="call-pwsh-stopped"]')
+    expect(row).toHaveAttribute('data-state', 'interrupted')
+    expect(row).not.toHaveAttribute('data-expanded')
+    expect(screen.getByRole('button', { name: 'Tool stopped · Pwsh' })).toHaveTextContent('Stopped')
+  })
+
+  it('keeps approval and question tool interactions actionable', () => {
+    const respondApproval = vi.fn(async () => ({ ok: true as const, value: undefined }))
+    const respondQuestion = vi.fn(async () => ({ ok: true as const, value: undefined }))
+    const snapshot = {
+      nodes: [],
+      openState: 'open',
+      partial: null,
+      pending: [{
+        kind: 'approval',
+        key: 'approval:1',
+        payload: { toolName: 'Edit', reason: 'Modify one source file' },
+      }, {
+        kind: 'question',
+        key: 'question:1',
+        payload: {
+          questions: [{
+            id: 'scope',
+            header: 'Scope',
+            question: 'Which files?',
+            options: [{ label: 'Source only', description: 'Skip generated files' }, { label: 'All files' }],
+          }],
+        },
+      }],
+      queue: [],
+      runningCalls: [],
+      running: true,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{ respondApproval, respondQuestion } as unknown as SideChatController}
+    />)
+
+    expect(screen.getByRole('region', { name: 'Tool approval required' })).toHaveTextContent('Allow tool: Edit?')
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }))
+    expect(respondApproval).toHaveBeenCalledWith('approval:1', 'approve')
+
+    fireEvent.click(screen.getByRole('radio', { name: /Source only/u }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(respondQuestion).toHaveBeenCalledWith('question:1', {
+      answers: [{ id: 'scope', selected: ['Source only'] }],
+    })
+  })
 })
