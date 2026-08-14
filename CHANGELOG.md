@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0-alpha.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.1.0-alpha.1...v0.2.0-alpha.1) (2026-08-14)
+
+
+### Features
+
+* implement archived-fork side chat for DSH rc.6 ([3a08098](https://github.com/AHGGG/dsh-side-chat/commit/3a080980da8cba6e0a20173966e1114079b145bd))
+
+
+### Bug Fixes
+
+* recover release bootstrap and demo ([337f17b](https://github.com/AHGGG/dsh-side-chat/commit/337f17bdaf46660a851023b9f9414145907ca348))
+* register scoped client bundle ([f0e7a04](https://github.com/AHGGG/dsh-side-chat/commit/f0e7a047b693855c0e63e10a06e8d8855c377b4d))
+
 ## 0.1.0-alpha.1 - 2026-08-14
 
 - Added `Ask in side chat` for stock DSH `0.1.0-rc.6`.
