@@ -10,11 +10,12 @@
 
 ## 安装
 
-如果尚未安装 DSH rc.6，先安装它，然后把插件添加到 Web profile：
+如果尚未安装 DSH rc.6，先安装它。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.1.0-rc.6
-dsh plugin --profile web add @ahggg/dsh-side-chat
+pnpm cache delete "@ahggg/dsh-side-chat"
+dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
 
 从希望 Agent 操作的真实工程目录启动 DSH：
@@ -64,13 +65,7 @@ dsh web --port 3080
 
 ## 升级或卸载
 
-升级到最新稳定版并重启 DSH：
-
-```powershell
-dsh plugin --profile web update @ahggg/dsh-side-chat --latest
-```
-
-刚发布新版本时，pnpm 可能复用旧的 registry metadata，导致已有安装仍停留在旧版。只清理这个包的 metadata 缓存，然后重试升级：
+刷新这个包的 registry metadata，升级到最新稳定版，然后重启 DSH：
 
 ```powershell
 pnpm cache delete "@ahggg/dsh-side-chat"

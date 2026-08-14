@@ -10,11 +10,12 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 ## Install
 
-Install DSH rc.6 if it is not already available, then add the plugin to the Web profile:
+Install DSH rc.6 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.1.0-rc.6
-dsh plugin --profile web add @ahggg/dsh-side-chat
+pnpm cache delete "@ahggg/dsh-side-chat"
+dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
 
 Start DSH from the project you want the agent to work in:
@@ -64,13 +65,7 @@ The parent and child share the same workspace. File changes, commands, and other
 
 ## Upgrade or remove
 
-Update to the latest stable version and restart DSH:
-
-```powershell
-dsh plugin --profile web update @ahggg/dsh-side-chat --latest
-```
-
-Immediately after a release, pnpm may reuse stale registry metadata and leave an existing installation on an older version. Clear only this package's metadata cache, then retry the update:
+Refresh this package's registry metadata, update to the latest stable version, and restart DSH:
 
 ```powershell
 pnpm cache delete "@ahggg/dsh-side-chat"
