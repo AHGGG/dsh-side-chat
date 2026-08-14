@@ -107,6 +107,8 @@ Configure the package's npm Trusted Publisher once with:
 - Environment: `npm`
 - Allowed action: `npm publish`
 
+In GitHub, also enable **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** so release-please can maintain its release PR.
+
 Future releases follow the same flow as `pi-kanban`: conventional commits update a release pull request; merging that pull request creates the GitHub Release and publishes the matching npm version through OIDC. No `NPM_TOKEN` secret is required.
 
 </details>

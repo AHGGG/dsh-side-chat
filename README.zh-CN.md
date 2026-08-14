@@ -107,6 +107,8 @@ npm publish ".\$packageTarball" --access public
 - Environment：`npm`
 - Allowed action：`npm publish`
 
+还需要在 GitHub 中开启 **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**，release-please 才能维护 release PR。
+
 后续发布与 `pi-kanban` 一致：conventional commits 自动更新 release PR；合并 release PR 后创建 GitHub Release，并通过 OIDC 将对应版本发布到 npm，不需要配置 `NPM_TOKEN`。
 
 </details>
