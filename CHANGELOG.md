@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.2.0...v0.3.0) (2026-08-14)
+
+
+### Features
+
+* improve side chat actions and markdown ([acb1368](https://github.com/AHGGG/dsh-side-chat/commit/acb1368c0f2c05bfa672a6cd09575a1f99b4ecf9))
+
+
+### Bug Fixes
+
+* polish side chat popovers and demo ([6e977fb](https://github.com/AHGGG/dsh-side-chat/commit/6e977fb9b715e49c05b0321b0a29a34b3c2274e6))
+
 ## [0.2.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.2.0-alpha.1...v0.2.0) (2026-08-14)
 
 
