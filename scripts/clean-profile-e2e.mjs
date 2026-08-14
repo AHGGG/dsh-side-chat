@@ -56,7 +56,7 @@ try {
     'globalThis.__ModuleLoader__ = { load(value) { handoff = value } }',
     `await import(${JSON.stringify(`${packageName}/client`)})`,
     `if (handoff?.id !== ${JSON.stringify(packageName)} || typeof handoff.factory !== 'function') throw new Error('client bundle did not register the npm package name')`,
-    "const modules = new Map([['react', await import('react')], ['react/jsx-runtime', await import('react/jsx-runtime')]])",
+    "const modules = new Map([['@deepseek-ai/dsh-client-ui-primitives', { MarkdownText() {} }], ['react', await import('react')], ['react/jsx-runtime', await import('react/jsx-runtime')]])",
     "const client = handoff.factory(specifier => { if (!modules.has(specifier)) throw new Error('unexpected external ' + specifier); return modules.get(specifier) })",
     "if (typeof client?.apply !== 'function' || !Array.isArray(client.inject)) throw new Error('invalid client plugin surface')",
   ].join('; ')

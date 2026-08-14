@@ -4,6 +4,7 @@ import type { ConversationSelection } from '../../shared/contracts.js'
 export interface SelectionActionsProps {
   readonly selection: ConversationSelection
   readonly askDisabledReason?: string
+  readonly onMoreDetails: (selection: ConversationSelection) => void
   readonly onAskInSideChat: (selection: ConversationSelection) => void
   readonly onDismiss: () => void
 }
@@ -11,6 +12,7 @@ export interface SelectionActionsProps {
 export function SelectionActions({
   selection,
   askDisabledReason,
+  onMoreDetails,
   onAskInSideChat,
   onDismiss,
 }: SelectionActionsProps) {
@@ -34,6 +36,17 @@ export function SelectionActions({
         if (event.key === 'Escape') onDismiss()
       }}
     >
+      <button
+        type="button"
+        disabled={askDisabledReason !== undefined}
+        title={askDisabledReason}
+        onClick={() => {
+          onMoreDetails(selection)
+          onDismiss()
+        }}
+      >
+        More details
+      </button>
       <button
         type="button"
         disabled={askDisabledReason !== undefined}

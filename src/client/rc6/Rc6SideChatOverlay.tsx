@@ -13,6 +13,8 @@ import { SelectionActions } from '../selection/SelectionActions.js'
 import { ArchivedConversation } from './ArchivedConversation.js'
 import { Rc6SideChatSessions, selectionDescriptor } from './sessions-adapter.js'
 
+const MORE_DETAILS_PROMPT = 'Please explain the selected passage in more detail.'
+
 function captureEvent(event: MouseEvent | KeyboardEvent): boolean {
   if (event instanceof KeyboardEvent && event.key === 'Escape') return false
   const target = event.target
@@ -140,6 +142,12 @@ export function Rc6SideChatOverlay({
         <SelectionActions
           selection={selection}
           {...askDisabledReason === undefined ? {} : { askDisabledReason }}
+          onMoreDetails={(captured) => {
+            const opened = controller.openDraft({ selection: captured })
+            if (!opened.ok) sessions.notify({ kind: 'warning', text: opened.error.message })
+            else void controller.sendFirst(MORE_DETAILS_PROMPT)
+            setSelection(null)
+          }}
           onAskInSideChat={(captured) => {
             const opened = controller.openDraft({ selection: captured })
             if (!opened.ok) sessions.notify({ kind: 'warning', text: opened.error.message })

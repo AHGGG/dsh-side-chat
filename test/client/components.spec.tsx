@@ -28,14 +28,23 @@ const draftState: SideChatState = {
 afterEach(cleanup)
 
 describe('Side Chat components', () => {
-  it('offers the single Ask in side chat selection action', () => {
+  it('offers More details before Ask in side chat', () => {
     const ask = vi.fn()
+    const moreDetails = vi.fn()
     const dismiss = vi.fn()
     render(<SelectionActions
       selection={selection}
+      onMoreDetails={moreDetails}
       onAskInSideChat={ask}
       onDismiss={dismiss}
     />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.map(button => button.textContent)).toEqual(['More details', 'Ask in side chat'])
+    fireEvent.click(screen.getByRole('button', { name: 'More details' }))
+    expect(moreDetails).toHaveBeenCalledWith(selection)
+    expect(dismiss).toHaveBeenCalledOnce()
+
+    dismiss.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Ask in side chat' }))
     expect(ask).toHaveBeenCalledWith(selection)
     expect(dismiss).toHaveBeenCalledOnce()
@@ -45,9 +54,12 @@ describe('Side Chat components', () => {
     render(<SelectionActions
       selection={selection}
       askDisabledReason="Close the current Side Chat first"
+      onMoreDetails={() => {}}
       onAskInSideChat={() => {}}
       onDismiss={() => {}}
     />)
+    expect(screen.getByRole('button', { name: 'More details' }))
+      .toHaveAttribute('title', 'Close the current Side Chat first')
     expect(screen.getByRole('button', { name: 'Ask in side chat' }))
       .toHaveAttribute('title', 'Close the current Side Chat first')
   })
@@ -213,5 +225,74 @@ describe('Side Chat components', () => {
     expect(send).not.toHaveBeenCalled()
     expect(fireEvent.keyDown(reply, { key: 'Enter' })).toBe(false)
     await waitFor(() => { expect(send).toHaveBeenCalledWith('Follow up', 'queue') })
+  })
+
+  it('uses DSH\'s icon-only stop action while a response is running', () => {
+    const snapshot = {
+      nodes: [],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: true,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+    const cancel = vi.fn(async () => ({ ok: true as const, value: undefined }))
+
+    render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{ cancel } as unknown as SideChatController}
+    />)
+
+    const stop = screen.getByRole('button', { name: 'Stop generating' })
+    expect(stop).toHaveTextContent('')
+    expect(stop.querySelector('rect')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+    fireEvent.click(stop)
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
+  it('renders assistant text as native DSH Markdown', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'assistant',
+        seq: 8,
+        blocks: [{
+          kind: 'text',
+          text: '# Details\n\n**Important**\n\n- First item\n- Second item',
+        }],
+        interrupted: false,
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument()
+    expect(screen.getByText('Important').tagName).toBe('STRONG')
+    expect(screen.getAllByRole('listitem').map(item => item.textContent))
+      .toEqual(['First item', 'Second item'])
   })
 })

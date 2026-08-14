@@ -30,6 +30,7 @@ try {
     throw new Error(`client bundle did not register ${packageName} through __ModuleLoader__.load`)
   }
   const modules = new Map([
+    ['@deepseek-ai/dsh-client-ui-primitives', { MarkdownText() {} }],
     ['react', await import('react')],
     ['react/jsx-runtime', await import('react/jsx-runtime')],
   ])

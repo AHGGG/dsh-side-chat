@@ -15,12 +15,14 @@ import type {
   SessionFace,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContentBlock } from '@deepseek-ai/dsh-api-remotes/client'
+import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConversationSelection } from '../../shared/contracts.js'
 import type { SideChatController } from '../side-chat-controller.js'
 import type { SideChatQuestionAnswer } from '../contracts.js'
 import { SIDE_CHAT_MESSAGES } from '../panel/messages.js'
 import { SelectionQuote } from '../panel/SelectionQuote.js'
 import { SendIcon } from '../panel/SendIcon.js'
+import { StopIcon } from '../panel/StopIcon.js'
 import { useAutoGrowingTextarea } from '../panel/use-auto-growing-textarea.js'
 
 function stringify(value: unknown): string {
@@ -47,10 +49,13 @@ function firstSideChatQuestion(text: string): string {
   return match?.[1]?.trim() ?? text
 }
 
-function AssistantBlocks({ blocks }: { readonly blocks: readonly AssistantBlock[] }) {
+function AssistantBlocks({ blocks, streaming = false }: {
+  readonly blocks: readonly AssistantBlock[]
+  readonly streaming?: boolean
+}) {
   return <>{blocks.map((block, index) => {
     const key = `${block.kind}-${String(index)}`
-    if (block.kind === 'text') return <div key={key} className="dsh-side-chat-message-text">{block.text}</div>
+    if (block.kind === 'text') return <MarkdownText key={key} text={block.text} streaming={streaming} />
     if (block.kind === 'reasoning') {
       return <details key={key} className="dsh-side-chat-reasoning"><summary>Reasoning</summary><pre>{block.text}</pre></details>
     }
@@ -321,7 +326,7 @@ export function ArchivedConversation({
         {snapshot.partial !== null && (
           <article className="dsh-side-chat-message" data-role="assistant">
             <span className="dsh-side-chat-message-role">Assistant</span>
-            <AssistantBlocks blocks={snapshot.partial.blocks} />
+            <AssistantBlocks blocks={snapshot.partial.blocks} streaming />
           </article>
         )}
         {snapshot.runningCalls.map(call => (
@@ -348,15 +353,26 @@ export function ArchivedConversation({
           }}
         />
         <div>
-          {snapshot.running && <button type="button" onClick={() => { void controller.cancel() }}>Stop</button>}
-          <button
-            type="submit"
-            className="dsh-side-chat-send-button"
-            aria-label={snapshot.running ? 'Steer' : 'Send'}
-            disabled={sending || draft.trim().length === 0}
-          >
-            <SendIcon />
-          </button>
+          {snapshot.running ? (
+            <button
+              type="button"
+              className="dsh-side-chat-stop-button"
+              aria-label="Stop generating"
+              title="Stop generating"
+              onClick={() => { void controller.cancel() }}
+            >
+              <StopIcon />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="dsh-side-chat-send-button"
+              aria-label="Send"
+              disabled={sending || draft.trim().length === 0}
+            >
+              <SendIcon />
+            </button>
+          )}
         </div>
       </form>
     </div>

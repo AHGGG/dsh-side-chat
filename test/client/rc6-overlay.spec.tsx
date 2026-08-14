@@ -102,6 +102,39 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     expect(captureMocks.capture).toHaveBeenCalledOnce()
   })
 
+  it('opens a Side Chat and immediately sends the More details prompt', async () => {
+    captureMocks.capture.mockResolvedValue(selectedPassage)
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+
+    const sessions = {
+      subscribeList: () => () => {},
+      currentSessionId: () => SessionId('parent-1'),
+      face: () => ({ getSnapshot: () => ({}) }),
+      notify: vi.fn(),
+    }
+    const controller = new SideChatController(
+      {} as SideChatRemote,
+      sessions as unknown as SideChatClientSessions,
+    )
+    const sendFirst = vi.spyOn(controller, 'sendFirst')
+      .mockResolvedValue({ ok: true, value: undefined })
+
+    render(<>
+      <div data-chat-flow />
+      <Rc6SideChatOverlay
+        controller={controller}
+        sessions={sessions as unknown as Rc6SideChatSessions}
+      />
+    </>)
+
+    fireEvent.mouseUp(document.body)
+    fireEvent.click(await screen.findByRole('button', { name: 'More details' }))
+
+    expect(sendFirst).toHaveBeenCalledWith('Please explain the selected passage in more detail.')
+    expect(screen.queryByRole('button', { name: 'More details' })).not.toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'Side Chat' })).toBeInTheDocument()
+  })
+
   it('closes an open Side Chat with Escape', async () => {
     const sessions = {
       subscribeList: () => () => {},

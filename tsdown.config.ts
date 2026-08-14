@@ -5,7 +5,7 @@ import { defineConfig } from 'tsdown'
 
 const PLUGIN_ID = '@ahggg/dsh-side-chat'
 const CSS_PREFIX = '\0dsh-side-chat-css:'
-const EXTERNALS = ['react', 'react/jsx-runtime']
+const EXTERNALS = ['@deepseek-ai/dsh-client-ui-primitives', 'react', 'react/jsx-runtime']
 
 export default defineConfig({
   name: `${PLUGIN_ID}/client`,
