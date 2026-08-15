@@ -38,6 +38,7 @@ Open the URL printed by DSH. The plugin loads automatically in the Web client.
 Useful details:
 
 - `Shift+Enter` inserts a newline.
+- Use the model control beside Send to choose a provider/model and its available reasoning effort. The choice belongs to this Side Chat and does not change the main conversation.
 - After clicking `Add to chat`, press `Enter` or click `Save` to keep the annotation. Click outside the comment box or click `Cancel` to discard it.
 - `Add to chat` keeps any existing draft text and can collect multiple numbered passages, each with its own optional comment, in one annotation capsule.
 - The input grows with its content and becomes scrollable at its maximum height.
@@ -49,7 +50,7 @@ Useful details:
 
 ## What happens to the conversation
 
-The first send creates a real DSH Session fork at the selected message. The child inherits the complete event prefix, model configuration, presets, and workspace. Keeping the prefix unchanged is friendly to provider prompt caching, although a cache hit is never guaranteed.
+The first send creates a real DSH Session fork at the selected message. The child inherits the complete event prefix, model configuration, presets, and workspace. Its initial model choice is snapshotted for Side Chat; later model or reasoning-effort changes apply to subsequent child steps without changing or following the parent conversation. Keeping the prefix unchanged is friendly to provider prompt caching, although a cache hit is never guaranteed.
 
 Closing Side Chat stops active work, archives the child Session, and releases its Agent. It does not delete the child's history from disk. The child and copied prefix therefore consume normal DSH Session storage.
 

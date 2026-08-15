@@ -26,6 +26,10 @@ export async function mountArchivedRemote(ctx: Rc6ClientContext): Promise<{
         })
         return result.ok ? result.value : { ok: false, error: remoteFailure(result.error) }
       },
+      selectModel: async (request) => {
+        const result = await archived.selectModel(request)
+        return result.ok ? result.value : { ok: false, error: remoteFailure(result.error) }
+      },
       close: async (request) => {
         const result = await archived.close(request)
         return result.ok ? result.value : { ok: false, error: remoteFailure(result.error) }

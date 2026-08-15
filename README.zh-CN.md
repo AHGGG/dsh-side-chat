@@ -38,6 +38,7 @@ dsh web --port 3080
 常用操作：
 
 - `Shift+Enter` 换行。
+- 使用发送按钮旁的模型控件可以选择 provider/model 及其可用的推理等级；该选择只属于当前 Side Chat，不会修改主会话。
 - 点击 `Add to chat` 后，按 `Enter` 或点击 `Save` 保存 annotation；点击批注框外部或点击 `Cancel` 则直接取消。
 - `Add to chat` 会保留输入框中已有的草稿，并可把多段带序号的文本及各自的可选批注汇总到同一个 annotation 胶囊中。
 - 输入框会随内容自动增高，达到最大高度后在内部滚动。
@@ -49,7 +50,7 @@ dsh web --port 3080
 
 ## 会话和数据如何处理
 
-第一次发送时，插件会在所选消息处创建一个真实的 DSH Session fork。child 会继承完整事件前缀、模型配置、preset 和 workspace。保持前缀不变有利于供应商的 prompt cache 复用，但不保证一定命中缓存。
+第一次发送时，插件会在所选消息处创建一个真实的 DSH Session fork。child 会继承完整事件前缀、模型配置、preset 和 workspace，并把初始模型选择快照为 Side Chat 的独立配置；之后修改模型或推理等级只会作用于 child 的后续 step，既不会修改主会话，也不会继续跟随主会话切换。保持前缀不变有利于供应商的 prompt cache 复用，但不保证一定命中缓存。
 
 关闭 Side Chat 时，插件会停止正在运行的任务、归档 child Session，并释放其 Agent；不会删除 child 的磁盘历史。因此，child 和复制的完整前缀会占用正常的 DSH Session 存储空间。
 

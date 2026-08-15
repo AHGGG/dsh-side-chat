@@ -3,6 +3,7 @@ import type {
   CreateSideChatValue,
   SessionId,
   SideChatClientError,
+  SideChatModelSelection,
   SideChatPhase,
   SideChatPromptPart,
   SideChatRemote,
@@ -119,6 +120,32 @@ export class SideChatController implements HostObservable<SideChatState> {
     }
     this.publish({ ...state, selection: undefined })
     return success(undefined)
+  }
+
+  async selectModel(selection: SideChatModelSelection): Promise<SideChatActionResult<SideChatModelSelection>> {
+    const state = this.getSnapshot()
+    if (state.phase === 'closed' || ['creating', 'opening', 'closing'].includes(state.phase)
+      || state.error?.operation === 'close') {
+      return failure(localError('invalid_request', 'The Side Chat model cannot be changed right now.', false))
+    }
+    const selected = { ...selection }
+    if (state.childSessionId === undefined) {
+      if (!['draft', 'error'].includes(state.phase)) {
+        return failure(localError('invalid_request', 'The Side Chat model cannot be changed right now.', false))
+      }
+      this.publish({ ...state, modelSelection: selected })
+      return success(selected)
+    }
+    const result = await this.invoke(() => this.remote.selectModel({
+      childSessionId: state.childSessionId!,
+      ...selected,
+    }))
+    if (!result.ok) return failure(result.error)
+    const latest = this.getSnapshot()
+    if (latest.childSessionId === state.childSessionId && !['closed', 'closing'].includes(latest.phase)) {
+      this.publish({ ...latest, modelSelection: result.value.selected })
+    }
+    return success(result.value.selected)
   }
 
   async sendFirst(question: string): Promise<SideChatActionResult<void>> {
@@ -276,7 +303,11 @@ export class SideChatController implements HostObservable<SideChatState> {
     let childSessionId = original.childSessionId
     if (childSessionId === undefined) {
       this.publish({ ...original, phase: 'creating', draft: question, firstQuestion: question, error: undefined })
-      const created = await this.invoke(() => this.remote.create({ parentSessionId, atSeq }))
+      const created = await this.invoke(() => this.remote.create({
+        parentSessionId,
+        atSeq,
+        ...(original.modelSelection === undefined ? {} : { modelSelection: original.modelSelection }),
+      }))
       if (!created.ok) {
         if (this.closeRequested) this.reset()
         else this.fail(created.error, 'create', { draft: question, firstQuestion: question })
@@ -340,6 +371,7 @@ export class SideChatController implements HostObservable<SideChatState> {
       childSessionId: created.childSessionId,
       boundarySeq: created.boundarySeq,
       inheritedThroughSeq: created.inheritedThroughSeq,
+      ...(created.modelSelection === undefined ? {} : { modelSelection: created.modelSelection }),
       firstQuestion: question,
       error: undefined,
     })

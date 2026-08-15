@@ -285,6 +285,7 @@ export function ArchivedConversation({
   selection,
   locale = 'en',
   cwd,
+  modelControl,
 }: {
   readonly face: SessionFace
   readonly inheritedThroughSeq: number
@@ -292,6 +293,7 @@ export function ArchivedConversation({
   readonly selection?: ConversationSelection
   readonly locale?: 'en' | 'zh-CN'
   readonly cwd?: string | undefined
+  readonly modelControl?: ReactNode
 }) {
   const snapshot = useSyncExternalStore(
     listener => face.subscribe(listener),
@@ -371,7 +373,7 @@ export function ArchivedConversation({
         <QueueRows queue={snapshot.queue} controller={controller} />
         {snapshot.promptError !== null && <div className="dsh-side-chat-turn-notice" role="alert">{snapshot.promptError.error.message}</div>}
       </div>
-      <form className="dsh-side-chat-composer" onSubmit={(event) => { void submit(event) }}>
+      <form className="dsh-side-chat-composer" data-composer-card="" onSubmit={(event) => { void submit(event) }}>
         <textarea
           ref={draftRef}
           rows={1}
@@ -385,7 +387,8 @@ export function ArchivedConversation({
             }
           }}
         />
-        <div>
+        <div className="dsh-side-chat-composer-actions">
+          {modelControl}
           {snapshot.running ? (
             <button
               type="button"

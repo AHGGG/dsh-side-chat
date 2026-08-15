@@ -29,5 +29,6 @@ export type {
   ConversationSelection,
   SelectionFragment,
   SelectionRect,
+  SideChatModelSelection,
   SideChatState,
 } from '../shared/contracts.js'

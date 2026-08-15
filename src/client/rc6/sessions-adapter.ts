@@ -12,6 +12,7 @@ import type {
   RpcError,
   SessionId as DshSessionId,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types'
 import type {
   SideChatClientSessions,
@@ -333,6 +334,14 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 
   cwd(sessionId: SessionId): string | undefined {
     return this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.cwd
+  }
+
+  modelDirectory(sessionId: SessionId): ModelDirectory | undefined {
+    try {
+      return this.ctx.modelDirectories.directoryFor(dshSessionId(sessionId))
+    } catch {
+      return undefined
+    }
   }
 
   private currentParentInput(): ParentComposerInput | undefined {

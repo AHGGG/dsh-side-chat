@@ -41,7 +41,15 @@ class FakeArchivedRuntime {
   readonly calls: string[] = []
   readonly warnings: string[] = []
   readonly parentCtx = {} as Context
-  readonly childCtx = {} as Context
+  readonly childListeners = new Map<string, Array<(...args: unknown[]) => unknown>>()
+  readonly childCtx = {
+    on: (event: string, listener: (...args: unknown[]) => unknown) => {
+      const listeners = this.childListeners.get(event) ?? []
+      listeners.push(listener)
+      this.childListeners.set(event, listeners)
+      return () => {}
+    },
+  } as unknown as Context
   readonly parentOptions = { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' }
   readonly parentHeader = {
     id: dshSessionId('parent-1'),
@@ -62,6 +70,7 @@ class FakeArchivedRuntime {
     dispose: async (): Promise<void> => { this.calls.push('dispose') },
   }
   createInput: FakeCreateInput | undefined
+  parentRequestConfig: { provider: string; model: string; reasoningEffort?: string } | undefined
   parentLive = true
   archiveGate: Promise<void> | undefined
   archiveEntered: (() => void) | undefined
@@ -73,7 +82,13 @@ class FakeArchivedRuntime {
             id,
             ctx: this.parentCtx,
             options: this.parentOptions,
-            session: { events: PARENT_EVENTS, header: this.parentHeader },
+            session: {
+              events: PARENT_EVENTS,
+              header: this.parentHeader,
+              requestHeader: () => this.parentRequestConfig === undefined
+                ? undefined
+                : { config: this.parentRequestConfig },
+            },
           }
         : undefined,
       create: async (input: FakeCreateInput) => {
@@ -114,6 +129,12 @@ class FakeArchivedRuntime {
         this.calls.push(`archive:${String(id)}`)
         this.archiveEntered?.()
         if (this.archiveGate !== undefined) await this.archiveGate
+      },
+    },
+    llm: {
+      resolveCallConfig: async (config: { provider: string; model: string; reasoningEffort?: string }) => {
+        this.calls.push(`model:${config.provider}:${config.model}:${config.reasoningEffort ?? 'default'}`)
+        return config
       },
     },
     logger: { warn: (message: string) => { this.warnings.push(message) } },
@@ -159,6 +180,101 @@ describe('ArchivedForkSideChatService', () => {
     })
     expect(runtime.calls).toContain('preset:compose-parent')
     expect(runtime.calls.some(call => call.startsWith('attach:E:\\workspace:session-'))).toBe(true)
+  })
+
+  it('snapshots the inherited model instead of following later parent changes', async () => {
+    const runtime = new FakeArchivedRuntime()
+    runtime.parentRequestConfig = {
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      reasoningEffort: 'low',
+    }
+    const service = new ArchivedForkSideChatService(runtime.context)
+    const created = await service.create(createRequest())
+    if (!created.ok) throw new Error('create failed')
+
+    expect(created.value.modelSelection).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      reasoningEffort: 'low',
+    })
+    runtime.parentRequestConfig = {
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'high',
+    }
+    const assemble = runtime.childListeners.get('system-prompt/assemble')?.[0] as
+      | ((assembly: unknown, context: unknown, next: () => Promise<{ variables: Record<string, string> }>) => Promise<{ variables: Record<string, string> }>)
+      | undefined
+    const request = runtime.childListeners.get('agent/request')?.[0] as
+      | ((payload: unknown, next: () => Promise<Record<string, unknown>>) => Promise<Record<string, unknown>>)
+      | undefined
+    await assemble?.({}, {}, async () => ({ variables: {} }))
+    expect(await request?.({}, async () => ({
+      provider: 'parent-provider',
+      model: 'parent-model',
+    }))).toMatchObject({
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      reasoningEffort: 'low',
+    })
+  })
+
+  it('keeps model and effort changes local to the Side Chat Agent', async () => {
+    const runtime = new FakeArchivedRuntime()
+    const service = new ArchivedForkSideChatService(runtime.context)
+    const created = await service.create({
+      ...createRequest(),
+      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+    })
+    if (!created.ok) throw new Error('create failed')
+
+    expect(created.value.modelSelection).toEqual({
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })
+    expect(await service.selectModel({
+      childSessionId: created.value.childSessionId,
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'high',
+    })).toEqual({
+      ok: true,
+      value: {
+        selected: {
+          provider: 'deepseek',
+          model: 'deepseek-reasoner',
+          reasoningEffort: 'high',
+        },
+      },
+    })
+
+    const assemble = runtime.childListeners.get('system-prompt/assemble')?.[0] as
+      | ((assembly: unknown, context: unknown, next: () => Promise<{ variables: Record<string, string> }>) => Promise<{ variables: Record<string, string> }>)
+      | undefined
+    const request = runtime.childListeners.get('agent/request')?.[0] as
+      | ((payload: unknown, next: () => Promise<Record<string, unknown>>) => Promise<Record<string, unknown>>)
+      | undefined
+    expect(assemble).toBeDefined()
+    expect(request).toBeDefined()
+    expect(await assemble?.({}, {}, async () => ({ variables: {} }))).toMatchObject({
+      variables: { provider: 'deepseek', model: 'deepseek-reasoner' },
+    })
+    expect(await request?.({}, async () => ({
+      provider: 'parent-provider',
+      model: 'parent-model',
+      reasoningEffort: 'medium',
+    }))).toMatchObject({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'high',
+    })
+    expect(runtime.parentOptions).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      reasoningEffort: 'high',
+    })
   })
 
   it('forks a persisted parent with its recorded preset when no live Agent exists', async () => {

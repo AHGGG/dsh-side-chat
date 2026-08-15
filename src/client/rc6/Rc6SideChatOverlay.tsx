@@ -12,6 +12,7 @@ import {
   type ConversationSelectionAnnotation,
 } from '../parent-composer/add-to-conversation.js'
 import type { SideChatController } from '../side-chat-controller.js'
+import { SideChatModelSelect } from '../panel/SideChatModelSelect.js'
 import { SideChatPanel } from '../panel/SideChatPanel.js'
 import { ConversationAnnotationMarkers } from '../selection/ConversationAnnotationMarkers.js'
 import { captureDomConversationSelection } from '../selection/selection-controller.js'
@@ -191,6 +192,22 @@ export function Rc6SideChatOverlay({
   const childCwd = state.childSessionId === undefined ? undefined : sessions.cwd(state.childSessionId)
   const inheritedThroughSeq = state.inheritedThroughSeq
   const locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' as const : 'en' as const
+  const modelDirectory = state.parentSessionId === undefined
+    ? undefined
+    : sessions.modelDirectory?.(state.parentSessionId)
+  const modelControl = modelDirectory === undefined
+    ? undefined
+    : (
+        <SideChatModelSelect
+          key={`${state.parentSessionId}:${state.childSessionId ?? 'draft'}`}
+          directory={modelDirectory}
+          selection={state.modelSelection}
+          locked={['creating', 'opening', 'closing'].includes(state.phase) || state.error?.operation === 'close'}
+          locale={locale}
+          onInitialize={(selection) => { void controller.selectModel(selection) }}
+          onSelect={(selection) => controller.selectModel(selection)}
+        />
+      )
 
   return (
     <div className="dsh-side-chat-overlay">
@@ -284,9 +301,11 @@ export function Rc6SideChatOverlay({
                     cwd={childCwd}
                     {...state.selection === undefined ? {} : { selection: state.selection }}
                     locale={locale}
+                    modelControl={modelControl}
                   />
                 ),
               }}
+          modelControl={modelControl}
           onDraftChange={(draft) => { controller.setDraft(draft) }}
           onFirstSend={(question) => controller.sendFirst(question)}
           onClose={() => controller.close()}

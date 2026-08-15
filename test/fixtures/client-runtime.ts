@@ -106,6 +106,7 @@ type CreateResult = Awaited<ReturnType<SideChatRemote['create']>>
 
 export class FakeRemote implements SideChatRemote {
   readonly createCalls: Parameters<SideChatRemote['create']>[0][] = []
+  readonly selectModelCalls: Parameters<SideChatRemote['selectModel']>[0][] = []
   readonly closeCalls: Parameters<SideChatRemote['close']>[0][] = []
   createDeferred: ReturnType<typeof deferred<CreateResult>> | undefined
   createResult: CreateResult | undefined
@@ -122,6 +123,20 @@ export class FakeRemote implements SideChatRemote {
         childSessionId: sessionId('child-1'),
         boundarySeq: 6,
         inheritedThroughSeq: 6,
+      },
+    }
+  }
+
+  async selectModel(request: Parameters<SideChatRemote['selectModel']>[0]) {
+    this.selectModelCalls.push(request)
+    return {
+      ok: true as const,
+      value: {
+        selected: {
+          provider: request.provider,
+          model: request.model,
+          ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+        },
       },
     }
   }

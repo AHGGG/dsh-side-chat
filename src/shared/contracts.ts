@@ -8,6 +8,13 @@ export function SessionId(value: string): SessionId {
   return value as SessionId
 }
 
+/** Provider/model choice owned by one Side Chat fork. */
+export interface SideChatModelSelection {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string | undefined
+}
+
 export type SideChatResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: SideChatWireError }
@@ -68,6 +75,7 @@ export type SideChatPhase =
 
 export interface SideChatState {
   readonly phase: SideChatPhase
+  readonly modelSelection?: SideChatModelSelection | undefined
   readonly parentSessionId?: SessionId | undefined
   readonly childSessionId?: SessionId | undefined
   readonly boundarySeq?: number | undefined
@@ -81,6 +89,7 @@ export interface SideChatState {
 export interface CreateSideChatRequest {
   readonly parentSessionId: SessionId
   readonly atSeq: number
+  readonly modelSelection?: SideChatModelSelection | undefined
 }
 
 export interface CreateSideChatValue {
@@ -88,6 +97,15 @@ export interface CreateSideChatValue {
   readonly childSessionId: SessionId
   readonly boundarySeq: number
   readonly inheritedThroughSeq: number
+  readonly modelSelection?: SideChatModelSelection | undefined
+}
+
+export interface SelectSideChatModelRequest extends SideChatModelSelection {
+  readonly childSessionId: SessionId
+}
+
+export interface SelectSideChatModelValue {
+  readonly selected: SideChatModelSelection
 }
 
 export interface CloseSideChatRequest {
@@ -100,6 +118,7 @@ export interface CloseSideChatValue {
 
 export interface SideChatRemote {
   create(request: CreateSideChatRequest): Promise<SideChatResult<CreateSideChatValue>>
+  selectModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>>
   close(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>>
 }
 

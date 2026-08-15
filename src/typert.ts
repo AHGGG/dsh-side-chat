@@ -3,14 +3,26 @@ import {
   archivedCloseResultSchema,
   archivedCreateRequestSchema,
   archivedCreateResultSchema,
+  archivedSelectModelRequestSchema,
+  archivedSelectModelResultSchema,
 } from './shared/archived-wire.js'
 
 function invocation(
-  method: 'create' | 'close',
+  method: 'create' | 'selectModel' | 'close',
   implementation: string,
   parameterSchema: { parse(value: unknown): unknown },
   resultSchema: { parse(value: unknown): unknown },
 ) {
+  const requestType = method === 'create'
+    ? 'CreateSideChatRequest'
+    : method === 'selectModel'
+      ? 'SelectSideChatModelRequest'
+      : 'CloseSideChatRequest'
+  const resultType = method === 'create'
+    ? 'ArchivedCreateResult'
+    : method === 'selectModel'
+      ? 'ArchivedSelectModelResult'
+      : 'ArchivedCloseResult'
   return {
     id: `@ahggg/dsh-side-chat#sideChatArchived/${method}`,
     service: 'sideChat',
@@ -24,13 +36,13 @@ function invocation(
       source: 'json' as const,
       codec: {
         mode: 'strict' as const,
-        typeSymbol: `@ahggg/dsh-side-chat/remote#${method === 'create' ? 'Create' : 'Close'}SideChatRequest`,
+        typeSymbol: `@ahggg/dsh-side-chat/remote#${requestType}`,
         schema: parameterSchema,
       },
     }],
     result: {
       mode: 'strict' as const,
-      typeSymbol: `@ahggg/dsh-side-chat/remote#Archived${method === 'create' ? 'Create' : 'Close'}Result`,
+      typeSymbol: `@ahggg/dsh-side-chat/remote#${resultType}`,
       schema: resultSchema,
     },
     sourceLocation: { file: 'src/index.ts', line: 1, column: 1 },
@@ -39,6 +51,7 @@ function invocation(
 
 export const ARCHIVED_INVOCATIONS = [
   invocation('create', 'createArchived', archivedCreateRequestSchema, archivedCreateResultSchema),
+  invocation('selectModel', 'selectArchivedModel', archivedSelectModelRequestSchema, archivedSelectModelResultSchema),
   invocation('close', 'closeArchived', archivedCloseRequestSchema, archivedCloseResultSchema),
 ]
 
