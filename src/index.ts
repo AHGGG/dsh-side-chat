@@ -8,6 +8,8 @@ import type {
   CloseSideChatValue,
   CreateSideChatRequest,
   CreateSideChatValue,
+  SelectSideChatModelRequest,
+  SelectSideChatModelValue,
   SideChatResult,
 } from './shared/contracts.js'
 
@@ -24,7 +26,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Stock DSH rc.6 Host plugin. */
 export class DshSideChatPlugin extends TypertRemoteService {
-  static inject = ['agents', 'sessionPersistence', 'workspaceRegistry']
+  static inject = ['agents', 'llm', 'sessionPersistence', 'workspaceRegistry']
   readonly archived: ArchivedForkSideChatService
 
   constructor(ctx: Context) {
@@ -35,6 +37,10 @@ export class DshSideChatPlugin extends TypertRemoteService {
 
   createArchived(request: CreateSideChatRequest): Promise<SideChatResult<CreateSideChatValue>> {
     return this.archived.create(request)
+  }
+
+  selectArchivedModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>> {
+    return this.archived.selectModel(request)
   }
 
   closeArchived(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>> {

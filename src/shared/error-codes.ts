@@ -12,6 +12,7 @@ export const SIDE_CHAT_ERROR_CODES = [
   'side_chat_not_found',
   'side_chat_open_failed',
   'side_chat_prompt_failed',
+  'side_chat_model_failed',
   'side_chat_interrupt_failed',
   'side_chat_destroy_failed',
   'transport_error',

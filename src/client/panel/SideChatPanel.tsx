@@ -13,6 +13,7 @@ export interface SideChatPanelProps {
   readonly state: SideChatState
   readonly locale?: 'en' | 'zh-CN'
   readonly embeddedConversation?: ReactNode
+  readonly modelControl?: ReactNode
   readonly onDraftChange: (draft: string) => void
   readonly onFirstSend: (question: string) => Promise<SideChatActionResult<void>>
   readonly onClose: () => Promise<SideChatActionResult<void>>
@@ -25,6 +26,7 @@ export function SideChatPanel({
   state,
   locale = 'en',
   embeddedConversation,
+  modelControl,
   onDraftChange,
   onFirstSend,
   onClose,
@@ -67,7 +69,11 @@ export function SideChatPanel({
       {state.childSessionId !== undefined && embeddedConversation !== undefined
         ? <SideChatBody>{embeddedConversation}</SideChatBody>
         : (
-          <form className="dsh-side-chat-draft" onSubmit={(event) => { void submit(event) }}>
+          <form
+          className="dsh-side-chat-draft"
+          data-composer-card=""
+          onSubmit={(event) => { void submit(event) }}
+        >
             {state.selection !== undefined && (
               <SelectionQuote
                 selections={[state.selection]}
@@ -92,14 +98,17 @@ export function SideChatPanel({
                 }
               }}
             />
-            <button
-              type="submit"
-              className="dsh-side-chat-send-button"
-              aria-label={messages.send}
-              disabled={submitting || state.draft.trim().length === 0}
-            >
-              <SendIcon />
-            </button>
+            <div className="dsh-side-chat-draft-actions">
+              {modelControl}
+              <button
+                type="submit"
+                className="dsh-side-chat-send-button"
+                aria-label={messages.send}
+                disabled={submitting || state.draft.trim().length === 0}
+              >
+                <SendIcon />
+              </button>
+            </div>
           </form>
         )}
 

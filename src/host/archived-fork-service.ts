@@ -1,16 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, type Agent, type AgentHandle, type AgentOptions, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import { ApiRemoteSessionNotFound, inspectApiRemoteSession } from '@deepseek-ai/dsh-api-remotes'
-import { SessionId as dshSessionId } from '@deepseek-ai/dsh-session'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { foldRequestHeader, SessionId as dshSessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type {
   CloseSideChatRequest,
   CloseSideChatValue,
   CreateSideChatRequest,
   CreateSideChatValue,
+  SelectSideChatModelRequest,
+  SelectSideChatModelValue,
   SessionId,
+  SideChatModelSelection,
   SideChatResult,
 } from '../shared/contracts.js'
 import { SessionId as clientSessionId } from '../shared/contracts.js'
@@ -20,6 +24,7 @@ interface ArchivedForkRecord {
   readonly parentSessionId: SessionId
   readonly childSessionId: SessionId
   readonly handle: AgentHandle
+  readonly selection: ModelSelectionRef
   closeOperation?: Promise<SideChatResult<CloseSideChatValue>>
 }
 
@@ -43,6 +48,32 @@ interface ForkComposition {
 
 function failure<T>(code: SideChatErrorCode, message: string, recoverable = false): SideChatResult<T> {
   return { ok: false, error: { code, message, recoverable } }
+}
+
+function wireSelection(selection: ModelSelection): SideChatModelSelection
+function wireSelection(selection: undefined): undefined
+function wireSelection(selection: ModelSelection | undefined): SideChatModelSelection | undefined
+function wireSelection(selection: ModelSelection | undefined): SideChatModelSelection | undefined {
+  if (selection === undefined) return undefined
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: String(selection.reasoningEffort) }),
+  }
+}
+
+function inheritedSelection(source: ParentSource): ModelSelection | undefined {
+  const config = (source.live?.session.requestHeader() ?? foldRequestHeader(source.events))?.config
+  if (config !== undefined) {
+    return {
+      provider: config.provider,
+      model: config.model,
+      ...(config.reasoningEffort === undefined ? {} : { reasoningEffort: config.reasoningEffort }),
+    }
+  }
+  const provider = source.live?.options.provider
+  const model = source.live?.options.model
+  return provider === undefined || model === undefined ? undefined : { provider, model }
 }
 
 function boundaryCut(events: readonly SessionEvent[], atSeq: number): BoundaryCut | undefined {
@@ -83,6 +114,31 @@ export class ArchivedForkSideChatService {
     }
   }
 
+  async selectModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>> {
+    const record = this.records.get(request.childSessionId)
+    if (record === undefined) return failure('side_chat_not_found', 'The Side Chat no longer exists.')
+    if (this.disposed || record.closeOperation !== undefined) {
+      return failure('side_chat_model_failed', 'The Side Chat is closing.', true)
+    }
+    try {
+      const selected = await this.resolveModelSelection(request)
+      if (this.records.get(request.childSessionId) !== record || this.disposed) {
+        return failure('side_chat_not_found', 'The Side Chat no longer exists.')
+      }
+      if (record.closeOperation !== undefined) {
+        return failure('side_chat_model_failed', 'The Side Chat is closing.', true)
+      }
+      record.selection.current = selected
+      return { ok: true, value: { selected: wireSelection(selected) } }
+    } catch (error) {
+      return failure(
+        'side_chat_model_failed',
+        error instanceof Error ? error.message : `The model could not be selected: ${String(error)}`,
+        true,
+      )
+    }
+  }
+
   async close(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>> {
     const record = this.records.get(request.childSessionId)
     if (record === undefined) return failure('side_chat_not_found', 'The Side Chat no longer exists.')
@@ -120,12 +176,30 @@ export class ArchivedForkSideChatService {
       return failure('fork_unavailable', 'Wait for the selected response to finish before opening a Side Chat.', true)
     }
 
+    let selected: ModelSelection | undefined
+    try {
+      selected = request.modelSelection === undefined
+        ? inheritedSelection(source)
+        : await this.resolveModelSelection(request.modelSelection)
+    } catch (error) {
+      return failure(
+        'side_chat_model_failed',
+        error instanceof Error ? error.message : `The model could not be selected: ${String(error)}`,
+        true,
+      )
+    }
+
     const childDshId = dshSessionId(`session-${randomUUID()}`)
     const childSessionId = clientSessionId(childDshId)
+    const selection: ModelSelectionRef = { current: selected, assembled: undefined }
     let handle: AgentHandle | undefined
     try {
       const composition = await this.resolveComposition(source)
       const agentOptions: AgentOptions = source.live === undefined ? {} : { ...source.live.options }
+      const setup = async (childCtx: Context): Promise<void> => {
+        installModelSelection(childCtx, selection)
+        if (composition.setup !== undefined) await composition.setup(childCtx)
+      }
       handle = await this.ctx.agents.create({
         sessionId: childDshId,
         seed: source.events.slice(0, boundary.cut),
@@ -136,7 +210,7 @@ export class ArchivedForkSideChatService {
           ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
         },
         agentOptions,
-        ...(composition.setup === undefined ? {} : { setup: composition.setup }),
+        setup,
       })
       const cwd = source.header.cwd
       const workspace = cwd === undefined ? undefined : await this.ctx.workspaceRegistry.resolveByPath(cwd)
@@ -156,7 +230,9 @@ export class ArchivedForkSideChatService {
       parentSessionId: request.parentSessionId,
       childSessionId,
       handle,
+      selection,
     })
+    const modelSelection = wireSelection(selected)
     return {
       ok: true,
       value: {
@@ -164,7 +240,23 @@ export class ArchivedForkSideChatService {
         childSessionId,
         boundarySeq: boundary.boundarySeq,
         inheritedThroughSeq: boundary.inheritedThroughSeq,
+        ...(modelSelection === undefined ? {} : { modelSelection }),
       },
+    }
+  }
+
+  private async resolveModelSelection(selection: SideChatModelSelection): Promise<ModelSelection> {
+    const resolved = await this.ctx.llm.resolveCallConfig({
+      provider: selection.provider,
+      model: selection.model,
+      ...(selection.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) }),
+    })
+    return {
+      provider: resolved.provider,
+      model: resolved.model,
+      ...(resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort }),
     }
   }
 

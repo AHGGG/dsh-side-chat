@@ -33,6 +33,94 @@ describe('SideChatController', () => {
     expect(sessions.binding.calls[0]?.kind).toBe('prompt')
   })
 
+  it('applies a draft model choice only to the child create request', async () => {
+    const { controller, remote, sessions } = setup()
+    controller.openDraft()
+
+    expect(await controller.selectModel({
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })).toEqual({
+      ok: true,
+      value: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+    })
+    expect((await controller.sendFirst('Use the faster model')).ok).toBe(true)
+
+    expect(remote.createCalls).toEqual([{
+      parentSessionId: 'parent-1',
+      atSeq: 4,
+      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+    }])
+    expect(remote.selectModelCalls).toHaveLength(0)
+    expect(sessions.modelPreference).toEqual({
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })
+    expect(sessions.current).toBe('parent-1')
+  })
+
+  it('switches the live child model without opening or changing the parent', async () => {
+    const { controller, remote, sessions } = setup()
+    controller.openDraft()
+    await controller.sendFirst('first')
+
+    expect(await controller.selectModel({ provider: 'deepseek', model: 'deepseek-reasoner' }))
+      .toEqual({
+        ok: true,
+        value: { provider: 'deepseek', model: 'deepseek-reasoner' },
+      })
+    expect(remote.selectModelCalls).toEqual([{
+      childSessionId: 'child-1',
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    }])
+    expect(controller.getSnapshot().modelSelection).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })
+    expect(sessions.modelPreference).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })
+    expect(sessions.current).toBe('parent-1')
+  })
+
+  it('restores the last explicit model choice in a new Side Chat globally', async () => {
+    const { controller, sessions } = setup()
+    controller.openDraft()
+    await controller.selectModel({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'off',
+    })
+    await controller.close()
+
+    sessions.current = SessionId('parent-2')
+    expect(controller.openDraft()).toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({
+      parentSessionId: 'parent-2',
+      modelSelection: {
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        reasoningEffort: 'off',
+      },
+    })
+  })
+
+  it('does not remember a model that was only inherited during initialization', () => {
+    const { controller, sessions } = setup()
+    controller.openDraft()
+
+    expect(controller.initializeModel({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'max',
+    }).ok).toBe(true)
+    expect(sessions.modelPreference).toBeUndefined()
+  })
+
   it('revalidates a selected message before creating', async () => {
     const { controller, remote, sessions } = setup()
     expect(controller.openDraft({ selection: selection() }).ok).toBe(true)

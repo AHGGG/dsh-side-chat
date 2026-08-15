@@ -13,7 +13,7 @@ import { Rc6SideChatSessions } from './rc6/sessions-adapter.js'
 import type { Rc6ClientContext } from './rc6/context.js'
 
 export const name = 'side-chat-client'
-export const inject = ['conversation', 'inputTriggers', 'remote', 'sessions', 'slots']
+export const inject = ['conversation', 'inputTriggers', 'modelDirectories', 'remote', 'sessions', 'slots']
 
 export async function apply(ctx: Context): Promise<void> {
   const stylesheet = document.createElement('style')

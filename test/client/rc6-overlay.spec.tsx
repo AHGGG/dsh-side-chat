@@ -47,6 +47,8 @@ const EMPTY_CONVERSATION_INPUT = {
   subscribeConversationInput: () => () => {},
   currentConversationInputSnapshot: () => undefined,
   updateConversationAnnotation: () => false,
+  sideChatModelPreference: () => undefined,
+  rememberSideChatModelPreference: () => {},
 }
 
 function parentComposerFixture() {

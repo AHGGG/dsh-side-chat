@@ -1,6 +1,7 @@
 import type {
   ConversationSelection,
   SessionId,
+  SideChatModelSelection,
   SideChatPromptPart,
   SideChatWireError,
 } from '../shared/contracts.js'
@@ -51,6 +52,8 @@ export interface SideChatClientSessions {
   currentSessionId(): SessionId | undefined
   lastCompletedSeq(parentSessionId: SessionId): number | undefined
   selectionIsCurrent(selection: ConversationSelection): boolean
+  sideChatModelPreference(): SideChatModelSelection | undefined
+  rememberSideChatModelPreference(selection: SideChatModelSelection): void
   retain(sessionId: SessionId): Promise<SideChatSessionLease>
   openSession(sessionId: SessionId): Promise<void>
   notify(message: { readonly kind: 'status' | 'warning'; readonly text: string }): void

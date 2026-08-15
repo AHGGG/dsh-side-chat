@@ -12,6 +12,7 @@ import type {
   RpcError,
   SessionId as DshSessionId,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types'
 import type {
   SideChatClientSessions,
@@ -23,6 +24,7 @@ import type {
 import type {
   ConversationSelection,
   SessionId,
+  SideChatModelSelection,
   SideChatPromptPart,
   SideChatWireError,
 } from '../../shared/contracts.js'
@@ -38,6 +40,7 @@ import type {
   ParentComposerInputSnapshot,
 } from '../parent-composer/add-to-conversation.js'
 import { ConversationAnnotationPersistence } from '../parent-composer/annotation-persistence.js'
+import { SideChatModelPreferences } from '../model-preference.js'
 import type { Rc6ClientContext } from './context.js'
 
 const BINDING_WAIT_MS = 8_000
@@ -199,6 +202,7 @@ class Rc6SessionBinding implements SideChatSessionBinding {
 export class Rc6SideChatSessions implements SideChatClientSessions {
   private readonly renamed = new Set<SessionId>()
   private readonly annotationPersistence = new ConversationAnnotationPersistence()
+  private readonly modelPreferences = new SideChatModelPreferences()
 
   constructor(private readonly ctx: Rc6ClientContext) {}
 
@@ -333,6 +337,22 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 
   cwd(sessionId: SessionId): string | undefined {
     return this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.cwd
+  }
+
+  modelDirectory(sessionId: SessionId): ModelDirectory | undefined {
+    try {
+      return this.ctx.modelDirectories.directoryFor(dshSessionId(sessionId))
+    } catch {
+      return undefined
+    }
+  }
+
+  sideChatModelPreference(): SideChatModelSelection | undefined {
+    return this.modelPreferences.get()
+  }
+
+  rememberSideChatModelPreference(selection: SideChatModelSelection): void {
+    this.modelPreferences.set(selection)
   }
 
   private currentParentInput(): ParentComposerInput | undefined {

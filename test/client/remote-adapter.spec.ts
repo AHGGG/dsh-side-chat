@@ -17,13 +17,22 @@ describe('mountArchivedRemote', () => {
         },
       },
     })
+    const selectModel = vi.fn().mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true,
+        value: {
+          selected: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+        },
+      },
+    })
     const close = vi.fn().mockResolvedValue({
       ok: true,
       value: { ok: true, value: { childSessionId: SessionId('child-1') } },
     })
     const dispose = vi.fn().mockResolvedValue(undefined)
     const mount = vi.fn().mockResolvedValue(dispose)
-    const namespace = { create, close }
+    const namespace = { create, selectModel, close }
     const remote = new Proxy({ $mount: mount }, {
       get(target, property, receiver) {
         if (property === 'sideChatArchived') {
@@ -36,9 +45,31 @@ describe('mountArchivedRemote', () => {
     const ctx = { remote, get } as unknown as Rc6ClientContext
 
     const mounted = await mountArchivedRemote(ctx)
-    expect(await mounted.remote.create({ parentSessionId: SessionId('parent-1'), atSeq: 5.9 }))
-      .toMatchObject({ ok: true, value: { childSessionId: 'child-1' } })
-    expect(create).toHaveBeenCalledWith({ parentSessionId: 'parent-1', atSeq: 5 })
+    expect(await mounted.remote.create({
+      parentSessionId: SessionId('parent-1'),
+      atSeq: 5.9,
+      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+    })).toMatchObject({ ok: true, value: { childSessionId: 'child-1' } })
+    expect(create).toHaveBeenCalledWith({
+      parentSessionId: 'parent-1',
+      atSeq: 5,
+      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
+    })
+    expect(await mounted.remote.selectModel({
+      childSessionId: SessionId('child-1'),
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })).toEqual({
+      ok: true,
+      value: { selected: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' } },
+    })
+    expect(selectModel).toHaveBeenCalledWith({
+      childSessionId: 'child-1',
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })
     expect(await mounted.remote.close({ childSessionId: SessionId('child-1') }))
       .toEqual({ ok: true, value: { childSessionId: 'child-1' } })
     expect(get).toHaveBeenCalledWith('remote.sideChatArchived')
