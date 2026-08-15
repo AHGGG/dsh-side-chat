@@ -31,7 +31,13 @@ import {
   addSelectionToConversation as addSelectionToParentComposer,
   conversationAnnotations,
   removeConversationAnnotations as removeParentConversationAnnotations,
+  updateConversationAnnotation as updateParentConversationAnnotation,
 } from '../parent-composer/add-to-conversation.js'
+import type {
+  ParentComposerInput,
+  ParentComposerInputSnapshot,
+} from '../parent-composer/add-to-conversation.js'
+import { ConversationAnnotationPersistence } from '../parent-composer/annotation-persistence.js'
 import type { Rc6ClientContext } from './context.js'
 
 const BINDING_WAIT_MS = 8_000
@@ -192,11 +198,37 @@ class Rc6SessionBinding implements SideChatSessionBinding {
 /** Adapter over rc.6's public SessionRuntime and exported concrete Session type. */
 export class Rc6SideChatSessions implements SideChatClientSessions {
   private readonly renamed = new Set<SessionId>()
+  private readonly annotationPersistence = new ConversationAnnotationPersistence()
 
   constructor(private readonly ctx: Rc6ClientContext) {}
 
   /** Observable rc.6 Session-list surface used to follow main-session switches. */
   readonly subscribeList = (listener: () => void): (() => void) => this.ctx.sessions.list.subscribe(listener)
+
+  /** Follow both current-session switches and that session's composer state. */
+  readonly subscribeConversationInput = (listener: () => void): (() => void) => {
+    let input: ParentComposerInput | undefined
+    let removeInputListener = (): void => {}
+    const bindInput = (): void => {
+      const next = this.currentParentInput()
+      if (next === input) return
+      removeInputListener()
+      input = next
+      removeInputListener = input?.state.subscribe?.(listener) ?? (() => {})
+    }
+    bindInput()
+    const removeListListener = this.ctx.sessions.list.subscribe(() => {
+      bindInput()
+      listener()
+    })
+    return () => {
+      removeListListener()
+      removeInputListener()
+    }
+  }
+
+  readonly currentConversationInputSnapshot = (): ParentComposerInputSnapshot | undefined =>
+    this.currentParentInput()?.state.getSnapshot()
 
   currentSessionId(): SessionId | undefined {
     const current = this.ctx.sessions.list.getSnapshot().current
@@ -225,27 +257,47 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
   /** Add one selected passage to the native composer of its parent Session. */
   addSelectionToConversation(selection: ConversationSelection, comment?: string): boolean {
     if (this.currentSessionId() !== selection.parentSessionId) return false
-    const scope = this.ctx.sessions.scope(dshSessionId(selection.parentSessionId))
-    if (scope === undefined) return false
-    return addSelectionToParentComposer(this.ctx.conversation.input.for(scope), selection, comment)
+    const input = this.currentParentInput()
+    if (input === undefined || !addSelectionToParentComposer(input, selection, comment)) return false
+    this.annotationPersistence.reconcile(selection.parentSessionId, input)
+    return true
+  }
+
+  /** Update an existing unsent annotation without adding a duplicate passage. */
+  updateConversationAnnotation(annotationIndex: number, comment?: string): boolean {
+    const sessionId = this.currentSessionId()
+    const input = this.currentParentInput()
+    if (sessionId === undefined
+      || input === undefined
+      || !updateParentConversationAnnotation(input, annotationIndex, comment)) return false
+    this.annotationPersistence.reconcile(sessionId, input)
+    return true
+  }
+
+  /** Mirror or recover the current Session's unsent annotation occurrence. */
+  reconcileConversationAnnotationPersistence(): void {
+    const sessionId = this.currentSessionId()
+    const input = this.currentParentInput()
+    if (sessionId !== undefined && input !== undefined) {
+      this.annotationPersistence.reconcile(sessionId, input)
+    }
   }
 
   /** Number assigned to the next annotation shown beside the selected passage. */
   nextConversationAnnotationNumber(): number {
-    const sessionId = this.currentSessionId()
-    if (sessionId === undefined) return 1
-    const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
-    if (scope === undefined) return 1
-    return conversationAnnotations(this.ctx.conversation.input.for(scope).state.getSnapshot()).length + 1
+    const snapshot = this.currentConversationInputSnapshot()
+    return snapshot === undefined ? 1 : conversationAnnotations(snapshot).length + 1
   }
 
   /** Remove the current Session's unsent selected-passage annotations. */
   removeConversationAnnotations(): boolean {
     const sessionId = this.currentSessionId()
-    if (sessionId === undefined) return false
-    const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
-    if (scope === undefined) return false
-    return removeParentConversationAnnotations(this.ctx.conversation.input.for(scope))
+    const input = this.currentParentInput()
+    if (sessionId === undefined
+      || input === undefined
+      || !removeParentConversationAnnotations(input)) return false
+    this.annotationPersistence.reconcile(sessionId, input)
+    return true
   }
 
   async retain(sessionId: SessionId): Promise<SideChatSessionLease> {
@@ -281,6 +333,13 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 
   cwd(sessionId: SessionId): string | undefined {
     return this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.cwd
+  }
+
+  private currentParentInput(): ParentComposerInput | undefined {
+    const sessionId = this.currentSessionId()
+    if (sessionId === undefined) return
+    const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
+    return scope === undefined ? undefined : this.ctx.conversation.input.for(scope)
   }
 
   private waitForBinding(sessionId: DshSessionId): Promise<SessionBinding> {

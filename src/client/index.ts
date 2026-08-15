@@ -12,6 +12,8 @@ export { SideChatPanel, type SideChatPanelProps } from './panel/SideChatPanel.js
 export { SelectionActions, type SelectionActionsProps } from './selection/SelectionActions.js'
 export {
   captureDomConversationSelection,
+  restoreDomConversationSelection,
+  type RestoredConversationSelection,
   type SelectionAnchorResolver,
   type SelectionNodeDescriptor,
 } from './selection/selection-controller.js'

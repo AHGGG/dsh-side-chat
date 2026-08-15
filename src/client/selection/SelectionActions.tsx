@@ -6,6 +6,11 @@ export interface SelectionActionsProps {
   readonly selection: ConversationSelection
   readonly askDisabledReason?: string
   readonly annotationNumber?: number
+  /** Opens only the comment editor, used when an existing marker is clicked. */
+  readonly annotationEditor?: {
+    readonly initialComment?: string
+    readonly dialogLabel?: string
+  }
   readonly onAddToChat: (selection: ConversationSelection, comment?: string) => void
   readonly onMoreDetails: (selection: ConversationSelection) => void
   readonly onAskInSideChat: (selection: ConversationSelection) => void
@@ -21,14 +26,15 @@ export function SelectionActions({
   selection,
   askDisabledReason,
   annotationNumber = 1,
+  annotationEditor,
   onAddToChat,
   onMoreDetails,
   onAskInSideChat,
   onAnnotationEditorChange,
   onDismiss,
 }: SelectionActionsProps) {
-  const [editingAnnotation, setEditingAnnotation] = useState(false)
-  const [comment, setComment] = useState('')
+  const [editingAnnotation, setEditingAnnotation] = useState(annotationEditor !== undefined)
+  const [comment, setComment] = useState(annotationEditor?.initialComment ?? '')
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const center = selection.rect.x + selection.rect.width / 2
   const style: CSSProperties = {
@@ -56,11 +62,10 @@ export function SelectionActions({
     width: editorWidth,
   }
   const markerStyle: CSSProperties = {
-    left: clamp(selection.rect.x + selection.rect.width - 10, 8, selection.rect.viewportWidth - 36),
-    top: selection.rect.y >= 38
-      ? selection.rect.y - 34
-      : selection.rect.y + selection.rect.height + 6,
+    left: clamp(selection.rect.x + selection.rect.width + 3, 4, selection.rect.viewportWidth - 26),
+    top: clamp(selection.rect.y - 12, 4, selection.rect.viewportHeight - 26),
   }
+  const markerNumber = annotationNumber > 99 ? '99+' : String(annotationNumber)
   const keepSelection = (event: MouseEvent<HTMLDivElement>): void => { event.preventDefault() }
 
   useEffect(() => {
@@ -71,6 +76,7 @@ export function SelectionActions({
     setEditingAnnotation(false)
     setComment('')
     onAnnotationEditorChange?.(false)
+    if (annotationEditor !== undefined) onDismiss()
   }
   const saveAnnotation = (): void => {
     const trimmed = comment.trim()
@@ -98,15 +104,18 @@ export function SelectionActions({
   if (editingAnnotation) {
     return (
       <>
-        <span
-          className="dsh-side-chat-selection-marker"
-          aria-hidden="true"
-          style={markerStyle}
-        >{String(annotationNumber)}</span>
+        {annotationEditor === undefined && (
+          <span
+            className="dsh-side-chat-selection-marker"
+            aria-hidden="true"
+            data-large={annotationNumber > 99 || undefined}
+            style={markerStyle}
+          >{markerNumber}</span>
+        )}
         <form
           className="dsh-side-chat-selection-comment"
           role="dialog"
-          aria-label="Add annotation comment"
+          aria-label={annotationEditor?.dialogLabel ?? 'Add annotation comment'}
           style={editorStyle}
           onSubmit={submitAnnotation}
           onMouseDown={(event) => { event.stopPropagation() }}

@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   addSelectionToConversation,
   conversationAnnotations,
+  conversationSelectionAnnotations,
   parseAnnotatedConversationPrompt,
   removeConversationAnnotations,
   selectionReferenceSource,
+  updateConversationAnnotation,
   type ParentComposerInput,
 } from '../../src/client/parent-composer/add-to-conversation.js'
 import type { ConversationSelection } from '../../src/shared/contracts.js'
@@ -69,6 +71,11 @@ describe('Add to chat composer integration', () => {
     ].join('\n'))
 
     expect(conversationAnnotations(snapshot)).toEqual([{ text: selection.text }])
+    expect(conversationSelectionAnnotations(snapshot)).toEqual([{
+      annotationIndex: 0,
+      text: selection.text,
+      selection,
+    }])
   })
 
   it('aggregates multiple passages in one removable annotation occurrence', () => {
@@ -114,9 +121,39 @@ describe('Add to chat composer integration', () => {
     ])
     expect(snapshot.draft).toBe('\uFFFC\n\nQuestion')
 
+    expect(updateConversationAnnotation(input, 0, 'Updated note')).toBe(true)
+    expect(conversationAnnotations(snapshot)).toEqual([
+      { text: selection.text, comment: 'Updated note' },
+      { text: second.text },
+    ])
+    expect(conversationSelectionAnnotations(snapshot).map(annotation => annotation.selection.text))
+      .toEqual([selection.text, second.text])
+    expect(updateConversationAnnotation(input, 8, 'Missing')).toBe(false)
+
     expect(removeConversationAnnotations(input)).toBe(true)
     expect(snapshot.draft).toBe('Question')
     expect(snapshot.occurrences).toEqual([])
+  })
+
+  it('keeps version 1 composer references readable without guessing source anchors', () => {
+    const snapshot = {
+      draft: '\uFFFC',
+      draftRev: 1,
+      occurrences: [{
+        occurrenceId: 1,
+        source: 'dsh-side-chat-selection',
+        ref: JSON.stringify({
+          version: 1,
+          annotations: [{ text: 'Legacy passage', comment: 'Legacy note' }],
+        }),
+        offset: 0,
+      }],
+    }
+
+    expect(conversationAnnotations(snapshot)).toEqual([
+      { text: 'Legacy passage', comment: 'Legacy note' },
+    ])
+    expect(conversationSelectionAnnotations(snapshot)).toEqual([])
   })
 
   it('parses the durable prefix without exposing it in the user message', () => {

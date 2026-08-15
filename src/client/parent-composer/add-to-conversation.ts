@@ -10,9 +10,19 @@ export interface ConversationAnnotation {
   readonly comment?: string
 }
 
+interface StoredConversationAnnotation extends ConversationAnnotation {
+  readonly selection?: ConversationSelection
+}
+
+export interface ConversationSelectionAnnotation extends ConversationAnnotation {
+  /** Zero-based position in the aggregated composer annotation list. */
+  readonly annotationIndex: number
+  readonly selection: ConversationSelection
+}
+
 interface SelectionReferencePayload {
-  readonly version: 1
-  readonly annotations: readonly ConversationAnnotation[]
+  readonly version: 2
+  readonly annotations: readonly StoredConversationAnnotation[]
 }
 
 export interface ParentComposerOccurrence {
@@ -29,7 +39,10 @@ export interface ParentComposerInputSnapshot {
 }
 
 export interface ParentComposerInput {
-  readonly state: { getSnapshot(): ParentComposerInputSnapshot }
+  readonly state: {
+    getSnapshot(): ParentComposerInputSnapshot
+    subscribe?(listener: () => void): () => void
+  }
   setDraft(text: string): void
   insertReference(
     reference: {
@@ -68,41 +81,86 @@ function escapeXmlText(value: string): string {
 function annotationFromSelection(
   selection: ConversationSelection,
   comment?: string,
-): ConversationAnnotation {
+): StoredConversationAnnotation {
   const trimmedComment = comment?.trim()
   return {
     text: selection.text,
+    selection,
     ...(trimmedComment === undefined || trimmedComment.length === 0
       ? {}
       : { comment: trimmedComment }),
   }
 }
 
-function encodeSelectionReference(annotations: readonly ConversationAnnotation[]): string {
+function encodeSelectionReference(annotations: readonly StoredConversationAnnotation[]): string {
   return JSON.stringify({
-    version: 1,
+    version: 2,
     annotations,
   } satisfies SelectionReferencePayload)
 }
 
-function isAnnotation(value: unknown): value is ConversationAnnotation {
+function isSelection(value: unknown): value is ConversationSelection {
   if (typeof value !== 'object' || value === null) return false
-  const annotation = value as Partial<ConversationAnnotation>
+  const selection = value as Partial<ConversationSelection>
+  if (typeof selection.parentSessionId !== 'string'
+    || typeof selection.text !== 'string'
+    || !Number.isSafeInteger(selection.atSeq)
+    || !Array.isArray(selection.fragments)
+    || typeof selection.rect !== 'object'
+    || selection.rect === null) return false
+  const rect = selection.rect as Partial<ConversationSelection['rect']>
+  if (![rect.x, rect.y, rect.width, rect.height, rect.viewportWidth, rect.viewportHeight]
+    .every(number => typeof number === 'number' && Number.isFinite(number))) return false
+  return selection.fragments.every((candidate) => {
+    if (typeof candidate !== 'object' || candidate === null) return false
+    const fragment = candidate as Partial<ConversationSelection['fragments'][number]>
+    return typeof fragment.nodeKey === 'string'
+      && typeof fragment.nodeKind === 'string'
+      && typeof fragment.turnKey === 'string'
+      && Number.isSafeInteger(fragment.seq)
+      && Number.isSafeInteger(fragment.startOffset)
+      && Number.isSafeInteger(fragment.endOffset)
+      && typeof fragment.text === 'string'
+      && ['user', 'assistant', 'context', 'code'].includes(fragment.source ?? '')
+      && typeof fragment.modelVisible === 'boolean'
+      && typeof fragment.settled === 'boolean'
+  })
+}
+
+function isStoredAnnotation(value: unknown): value is StoredConversationAnnotation {
+  if (typeof value !== 'object' || value === null) return false
+  const annotation = value as Partial<StoredConversationAnnotation>
   return typeof annotation.text === 'string'
     && (annotation.comment === undefined || typeof annotation.comment === 'string')
+    && (annotation.selection === undefined || isSelection(annotation.selection))
+}
+
+function visibleAnnotation(annotation: StoredConversationAnnotation): ConversationAnnotation {
+  return {
+    text: annotation.text,
+    ...(annotation.comment === undefined ? {} : { comment: annotation.comment }),
+  }
+}
+
+function decodeStoredSelectionReference(ref: string): readonly StoredConversationAnnotation[] {
+  const value = JSON.parse(ref) as unknown
+  // Accept the one-selection payload written by the first Add-to-chat build.
+  if (isStoredAnnotation(value)) return [value]
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('The selected conversation annotation is no longer valid.')
+  }
+  const payload = value as { readonly version?: unknown; readonly annotations?: unknown }
+  if ((payload.version !== 1 && payload.version !== 2)
+    || !Array.isArray(payload.annotations)
+    || payload.annotations.length === 0
+    || !payload.annotations.every(isStoredAnnotation)) {
+    throw new Error('The selected conversation annotation is no longer valid.')
+  }
+  return payload.annotations
 }
 
 export function decodeSelectionReference(ref: string): readonly ConversationAnnotation[] {
-  const value = JSON.parse(ref) as Partial<SelectionReferencePayload> & Partial<ConversationAnnotation>
-  // Accept the one-selection payload written by the first Add-to-chat build.
-  if (isAnnotation(value)) return [value]
-  if (value.version !== 1
-    || !Array.isArray(value.annotations)
-    || value.annotations.length === 0
-    || !value.annotations.every(isAnnotation)) {
-    throw new Error('The selected conversation annotation is no longer valid.')
-  }
-  return value.annotations
+  return decodeStoredSelectionReference(ref).map(visibleAnnotation)
 }
 
 function selectedContext(annotations: readonly ConversationAnnotation[]): string {
@@ -132,17 +190,39 @@ function selectionOccurrences(snapshot: ParentComposerInputSnapshot): readonly P
   return snapshot.occurrences.filter(occurrence => occurrence.source === SELECTION_REFERENCE_SOURCE)
 }
 
-/** Read all plugin annotations represented by the current DSH input occurrence. */
-export function conversationAnnotations(
+function storedConversationAnnotations(
   snapshot: ParentComposerInputSnapshot,
-): readonly ConversationAnnotation[] {
+): readonly StoredConversationAnnotation[] {
   return selectionOccurrences(snapshot).flatMap((occurrence) => {
     try {
-      return [...decodeSelectionReference(occurrence.ref)]
+      return [...decodeStoredSelectionReference(occurrence.ref)]
     } catch {
       return []
     }
   })
+}
+
+/** Read all plugin annotations represented by the current DSH input occurrence. */
+export function conversationAnnotations(
+  snapshot: ParentComposerInputSnapshot,
+): readonly ConversationAnnotation[] {
+  return storedConversationAnnotations(snapshot).map(visibleAnnotation)
+}
+
+/** Read annotations that retain an exact source-selection anchor. */
+export function conversationSelectionAnnotations(
+  snapshot: ParentComposerInputSnapshot,
+): readonly ConversationSelectionAnnotation[] {
+  const anchored: ConversationSelectionAnnotation[] = []
+  storedConversationAnnotations(snapshot).forEach((annotation, annotationIndex) => {
+    if (annotation.selection === undefined) return
+    anchored.push({
+      ...visibleAnnotation(annotation),
+      annotationIndex,
+      selection: annotation.selection,
+    })
+  })
+  return anchored
 }
 
 function draftWithoutSelectionOccurrences(snapshot: ParentComposerInputSnapshot): string {
@@ -183,14 +263,11 @@ export const selectionReferenceSource: SelectionReferenceSource = {
   },
 }
 
-/** Add one passage to the parent composer's aggregated annotation occurrence. */
-export function addSelectionToConversation(
+function writeConversationAnnotations(
   input: ParentComposerInput,
-  selection: ConversationSelection,
-  comment?: string,
+  before: ParentComposerInputSnapshot,
+  annotations: readonly StoredConversationAnnotation[],
 ): boolean {
-  const before = input.state.getSnapshot()
-  const annotations = [...conversationAnnotations(before), annotationFromSelection(selection, comment)]
   const draft = draftWithoutSelectionOccurrences(before)
   if (selectionOccurrences(before).length > 0) input.setDraft(draft)
   const insertionState = input.state.getSnapshot()
@@ -210,6 +287,86 @@ export function addSelectionToConversation(
   // lines reserve the first visual row for the plugin's interactive capsule.
   input.setDraft(`${OBJECT_REPLACEMENT_CHARACTER}\n\n${draft}`)
   return true
+}
+
+/** Add one passage to the parent composer's aggregated annotation occurrence. */
+export function addSelectionToConversation(
+  input: ParentComposerInput,
+  selection: ConversationSelection,
+  comment?: string,
+): boolean {
+  const before = input.state.getSnapshot()
+  const annotations = [...storedConversationAnnotations(before), annotationFromSelection(selection, comment)]
+  return writeConversationAnnotations(input, before, annotations)
+}
+
+/** Replace the optional comment on one unsent selected-passage annotation. */
+export function updateConversationAnnotation(
+  input: ParentComposerInput,
+  annotationIndex: number,
+  comment?: string,
+): boolean {
+  const before = input.state.getSnapshot()
+  const annotations = [...storedConversationAnnotations(before)]
+  const current = annotations[annotationIndex]
+  if (!Number.isSafeInteger(annotationIndex) || current === undefined) return false
+  const trimmedComment = comment?.trim()
+  annotations[annotationIndex] = {
+    text: current.text,
+    ...(current.selection === undefined ? {} : { selection: current.selection }),
+    ...(trimmedComment === undefined || trimmedComment.length === 0
+      ? {}
+      : { comment: trimmedComment }),
+  }
+  return writeConversationAnnotations(input, before, annotations)
+}
+
+/** Return the valid aggregated reference currently occupying the leading draft slot. */
+export function conversationAnnotationReference(
+  snapshot: ParentComposerInputSnapshot,
+): string | undefined {
+  const occurrence = selectionOccurrences(snapshot).find(candidate => candidate.offset === 0)
+  if (occurrence === undefined || !snapshot.draft.startsWith(OBJECT_REPLACEMENT_CHARACTER)) return
+  try {
+    decodeStoredSelectionReference(occurrence.ref)
+    return occurrence.ref
+  } catch {
+    return
+  }
+}
+
+function draftWithoutOrphanedAnnotationPrefix(
+  snapshot: ParentComposerInputSnapshot,
+): string | undefined {
+  const prefix = `${OBJECT_REPLACEMENT_CHARACTER}\n\n`
+  if (!snapshot.draft.startsWith(prefix)
+    || snapshot.occurrences.some(occurrence => occurrence.offset === 0)) return
+  return snapshot.draft.slice(prefix.length)
+}
+
+/** Remove the plugin-owned prefix when rc.6 restored its draft without occurrences. */
+export function removeOrphanedConversationAnnotationPlaceholder(input: ParentComposerInput): boolean {
+  const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot())
+  if (draft === undefined) return false
+  input.setDraft(draft)
+  return true
+}
+
+/** Rehydrate a lost rc.6 occurrence only over the exact plugin-owned orphan prefix. */
+export function restoreConversationAnnotationReference(
+  input: ParentComposerInput,
+  ref: string,
+): boolean {
+  let annotations: readonly StoredConversationAnnotation[]
+  try {
+    annotations = decodeStoredSelectionReference(ref)
+  } catch {
+    return false
+  }
+  const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot())
+  if (draft === undefined) return false
+  input.setDraft(draft)
+  return writeConversationAnnotations(input, input.state.getSnapshot(), annotations)
 }
 
 function unescapeXmlText(value: string): string {
