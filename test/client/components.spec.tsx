@@ -468,13 +468,14 @@ describe('Side Chat components', () => {
     expect(rows).toHaveLength(1)
     const row = rows[0] as HTMLElement
     expect(row).toHaveAttribute('data-state', 'success')
-    expect(screen.getByRole('button', { name: 'Tool · Read' })).toHaveTextContent('Readpackage.json')
+    const toolButton = screen.getByRole('button', { name: /Read.*package\.json/u })
+    expect(toolButton).toHaveTextContent(/Read.*package\.json/u)
     expect(row).not.toHaveAttribute('data-expanded')
-    fireEvent.click(screen.getByRole('button', { name: 'Tool · Read' }))
+    fireEvent.click(toolButton)
     expect(row).toHaveAttribute('data-expanded')
-    expect(screen.getByText('Input')).toBeInTheDocument()
-    expect(screen.getByText('Output')).toBeInTheDocument()
-    expect(screen.getByText('{"name":"@ahggg/dsh-side-chat"}')).toBeInTheDocument()
+    expect(row).toHaveTextContent('{"name":"@ahggg/dsh-side-chat"}')
+    expect(screen.queryByText('Input')).not.toBeInTheDocument()
+    expect(screen.queryByText('Output')).not.toBeInTheDocument()
     expect(screen.queryByText(/<path>/u)).not.toBeInTheDocument()
   })
 
@@ -513,10 +514,118 @@ describe('Side Chat components', () => {
 
     expect(container.querySelectorAll('[data-call-id="call-grep-1"]')).toHaveLength(1)
     expect(container.querySelector('[data-call-id="call-grep-1"]')).toHaveAttribute('data-state', 'running')
-    expect(screen.getByRole('button', { name: 'Running tool · Grep' })).toHaveTextContent('GreprunningCallsRunning')
+    expect(screen.getByRole('button', { name: /Search.*runningCalls/u })).toHaveTextContent(/Search.*runningCalls/u)
+    expect(screen.getByText('Running')).toHaveClass('dsh-side-chat-tool-visually-hidden')
   })
 
-  it('opens failed tool output by default without breaking long text wrapping', () => {
+  it('uses the native terminal presenter for a structured Pwsh result', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'tool-result',
+        seq: 8,
+        callId: 'call-pwsh-native',
+        call: {
+          name: 'pwsh',
+          argsRaw: '{"command":"Get-Content package.json","description":"Inspect package metadata"}',
+        },
+        callTime: 1,
+        content: [{ type: 'text', text: '{"name":"@ahggg/dsh-side-chat"}' }],
+        isError: false,
+        callView: {
+          card: 'terminal',
+          title: 'Get-Content package.json',
+          description: 'Inspect package metadata',
+          cwd: '.',
+        },
+        resultView: {
+          card: 'terminal',
+          title: 'Get-Content package.json',
+          output: '{"name":"@ahggg/dsh-side-chat"}',
+          exitCode: 0,
+        },
+        subCalls: [],
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+      cwd={'E:\\github\\dsh-side-chat'}
+    />)
+
+    const row = container.querySelector('[data-call-id="call-pwsh-native"]') as HTMLElement
+    const toolButton = screen.getByRole('button', { name: /Pwsh.*Inspect package metadata/u })
+    fireEvent.click(toolButton)
+    expect(row).toHaveAttribute('data-expanded')
+    expect(row.querySelector('.dsh-side-chat-tool-terminal')).toHaveTextContent('Get-Content package.json')
+    expect(row.querySelector('.dsh-side-chat-tool-terminal')).toHaveTextContent('@ahggg/dsh-side-chat')
+  })
+
+  it('uses the native read presenter and shortens workspace paths', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'tool-result',
+        seq: 8,
+        callId: 'call-read-native',
+        call: {
+          name: 'read',
+          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\src\\\\client\\\\index.ts"}',
+        },
+        callTime: 1,
+        content: [{ type: 'text', text: 'export const ready = true' }],
+        isError: false,
+        callView: null,
+        resultView: {
+          card: 'read',
+          path: 'E:\\github\\dsh-side-chat\\src\\client\\index.ts',
+          lines: [{ number: 1, text: 'export const ready = true' }],
+          totalLines: 1,
+          lang: 'typescript',
+        },
+        subCalls: [],
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+      cwd={'E:\\github\\dsh-side-chat'}
+    />)
+
+    const row = container.querySelector('[data-call-id="call-read-native"]') as HTMLElement
+    const toolButton = screen.getByRole('button', { name: /Read.*src\\client\\index\.ts/u })
+    expect(toolButton).not.toHaveTextContent('E:\\github\\dsh-side-chat')
+    fireEvent.click(toolButton)
+    expect(row.querySelector('.dsh-side-chat-tool-read')).toHaveTextContent('export const ready = true')
+  })
+
+  it('keeps failed tool output collapsed with the native error summary', () => {
     const snapshot = {
       nodes: [{
         kind: 'tool-result',
@@ -552,9 +661,11 @@ describe('Side Chat components', () => {
 
     const row = container.querySelector('[data-call-id="call-read-error"]')
     expect(row).toHaveAttribute('data-state', 'error')
+    expect(row).not.toHaveAttribute('data-expanded')
+    const toolButton = screen.getByRole('button', { name: /Read.*File not found: missing-file\.txt/u })
+    fireEvent.click(toolButton)
     expect(row).toHaveAttribute('data-expanded')
-    expect(screen.getByRole('button', { name: 'Tool failed · Read' })).toHaveTextContent('Failed')
-    expect(screen.getByText('File not found: missing-file.txt')).toBeInTheDocument()
+    expect(screen.getAllByText('File not found: missing-file.txt')).toHaveLength(2)
   })
 
   it('distinguishes a user-stopped tool from a failed tool', () => {
@@ -595,7 +706,8 @@ describe('Side Chat components', () => {
     const row = container.querySelector('[data-call-id="call-pwsh-stopped"]')
     expect(row).toHaveAttribute('data-state', 'interrupted')
     expect(row).not.toHaveAttribute('data-expanded')
-    expect(screen.getByRole('button', { name: 'Tool stopped · Pwsh' })).toHaveTextContent('Stopped')
+    expect(screen.getByRole('button', { name: /Pwsh.*Start-Sleep -Seconds 8/u })).toBeInTheDocument()
+    expect(screen.getByText('Stopped')).toHaveClass('dsh-side-chat-tool-visually-hidden')
   })
 
   it('keeps approval and question tool interactions actionable', () => {

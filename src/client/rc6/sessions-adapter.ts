@@ -279,6 +279,10 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     return this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.displayTitle
   }
 
+  cwd(sessionId: SessionId): string | undefined {
+    return this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.cwd
+  }
+
   private waitForBinding(sessionId: DshSessionId): Promise<SessionBinding> {
     const immediate = this.ctx.sessions.binding(sessionId)
     if (immediate !== undefined) return Promise.resolve(immediate)

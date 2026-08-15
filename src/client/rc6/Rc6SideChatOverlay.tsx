@@ -156,6 +156,7 @@ export function Rc6SideChatOverlay({
     ? undefined
     : 'Close the current Side Chat before starting another one.'
   const childFace = state.childSessionId === undefined ? undefined : sessions.face(state.childSessionId)
+  const childCwd = state.childSessionId === undefined ? undefined : sessions.cwd(state.childSessionId)
   const inheritedThroughSeq = state.inheritedThroughSeq
   const locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' as const : 'en' as const
 
@@ -205,6 +206,7 @@ export function Rc6SideChatOverlay({
                     face={childFace}
                     inheritedThroughSeq={inheritedThroughSeq}
                     controller={controller}
+                    cwd={childCwd}
                     {...state.selection === undefined ? {} : { selection: state.selection }}
                     locale={locale}
                   />
