@@ -484,6 +484,90 @@ describe('Side Chat components', () => {
       .toEqual(['First item', 'Second item'])
   })
 
+  it('renders settled reasoning with the native Think disclosure', () => {
+    const snapshot = {
+      nodes: [{
+        kind: 'assistant',
+        seq: 8,
+        blocks: [{
+          kind: 'reasoning',
+          text: 'Inspect the constraints first.\nThen choose the smallest change.',
+        }],
+        interrupted: false,
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+    />)
+
+    const reasoning = container.querySelector('[data-variant="think"]')
+    const disclosure = screen.getByRole('button', { name: /Think.*Inspect the constraints first\./u })
+    expect(reasoning).toHaveAttribute('data-state', 'ok')
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-summary'))
+      .toHaveTextContent('Inspect the constraints first.')
+    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-body')).toBeNull()
+
+    fireEvent.click(disclosure)
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-body'))
+      .toHaveTextContent('Inspect the constraints first. Then choose the smallest change.')
+  })
+
+  it('uses the latest reasoning line and running treatment while streaming', () => {
+    const snapshot = {
+      nodes: [],
+      openState: 'open',
+      partial: {
+        turn: 1,
+        step: 1,
+        blocks: [{
+          kind: 'reasoning',
+          text: 'Inspecting files.\nChecking the current renderer.',
+        }],
+      },
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: true,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      snapshot,
+      subscribe() { return () => {} },
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+
+    const { container } = render(<ArchivedConversation
+      face={face}
+      inheritedThroughSeq={7}
+      controller={{} as SideChatController}
+      locale="zh-CN"
+    />)
+
+    const reasoning = container.querySelector('[data-variant="think"]')
+    const summary = reasoning?.querySelector('.dsh-side-chat-reasoning-summary')
+    expect(reasoning).toHaveAttribute('data-state', 'running')
+    expect(summary).toHaveAttribute('data-follow-end', 'true')
+    expect(summary).toHaveTextContent('Checking the current renderer.')
+    expect(screen.getByText('运行中')).toHaveClass('dsh-side-chat-reasoning-visually-hidden')
+  })
+
   it('merges a completed tool call and result into one expandable row', () => {
     const snapshot = {
       nodes: [{

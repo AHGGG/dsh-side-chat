@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,7 +17,11 @@ import type {
   SessionFace,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContentBlock } from '@deepseek-ai/dsh-api-remotes/client'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  DisclosureRow,
+  IconThinkOutline14,
+  MarkdownText,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConversationSelection } from '../../shared/contracts.js'
 import type { SideChatController } from '../side-chat-controller.js'
 import type { SideChatQuestionAnswer } from '../contracts.js'
@@ -55,20 +61,121 @@ function firstSideChatQuestion(text: string): string {
   return match?.[1]?.trim() ?? text
 }
 
+function firstLine(text: string): string {
+  const newline = text.indexOf('\n')
+  return newline === -1 ? text : text.slice(0, newline)
+}
+
+function latestLine(text: string): string {
+  const visible = text.trimEnd()
+  const newline = visible.lastIndexOf('\n')
+  return newline === -1 ? visible : visible.slice(newline + 1)
+}
+
+function useThrottledVisualUpdate(update: () => void, intervalFrames = 3): () => void {
+  const updateRef = useRef(update)
+  updateRef.current = update
+  const pendingFrameRef = useRef<number | null>(null)
+  useLayoutEffect(() => () => {
+    if (pendingFrameRef.current === null) return
+    cancelAnimationFrame(pendingFrameRef.current)
+    pendingFrameRef.current = null
+  }, [])
+  return useCallback(() => {
+    if (pendingFrameRef.current !== null) return
+    let remainingFrames = intervalFrames
+    const advance = (): void => {
+      remainingFrames -= 1
+      if (remainingFrames > 0) {
+        pendingFrameRef.current = requestAnimationFrame(advance)
+        return
+      }
+      pendingFrameRef.current = null
+      updateRef.current()
+    }
+    pendingFrameRef.current = requestAnimationFrame(advance)
+  }, [intervalFrames])
+}
+
+function ReasoningRow({ text, running, locale }: {
+  readonly text: string
+  readonly running: boolean
+  readonly locale: 'en' | 'zh-CN'
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const summaryRef = useRef<HTMLSpanElement>(null)
+  const summary = running ? latestLine(text) : firstLine(text)
+  const scheduleSummaryScroll = useThrottledVisualUpdate(() => {
+    const element = summaryRef.current
+    if (element === null) return
+    element.scrollLeft = running ? element.scrollWidth - element.clientWidth : 0
+  })
+  useEffect(() => {
+    scheduleSummaryScroll()
+  }, [running, scheduleSummaryScroll, summary])
+  return (
+    <div
+      className="dsh-side-chat-reasoning"
+      data-variant="think"
+      data-state={running ? 'running' : 'ok'}
+    >
+      {running && (
+        <span className="dsh-side-chat-reasoning-visually-hidden">
+          {locale === 'zh-CN' ? '运行中' : 'Running'}
+        </span>
+      )}
+      <DisclosureRow
+        rowClassName="dsh-side-chat-reasoning-row"
+        leadingClassName="dsh-side-chat-reasoning-leading"
+        titleClassName="dsh-side-chat-reasoning-title"
+        chevronClassName="dsh-side-chat-reasoning-chevron"
+        icon={<IconThinkOutline14 size={14} />}
+        title="Think"
+        open={expanded}
+        expandable
+        expandOnRowClick
+        onToggle={() => { setExpanded(value => !value) }}
+        collapsedContent={(
+          <>
+            <span className="dsh-side-chat-reasoning-separator" aria-hidden="true" />
+            <span
+              ref={summaryRef}
+              className="dsh-side-chat-reasoning-summary"
+              data-follow-end={running || undefined}
+            >
+              {summary}
+            </span>
+          </>
+        )}
+      >
+        <div className="dsh-side-chat-reasoning-body">{text}</div>
+      </DisclosureRow>
+    </div>
+  )
+}
+
 type ToolResultNode = Extract<ConversationNode, { kind: 'tool-result' }>
 
-function AssistantBlocks({ blocks, streaming = false, projectedToolCallIds, unprojectedToolState = 'pending', cwd }: {
+function AssistantBlocks({ blocks, streaming = false, projectedToolCallIds, unprojectedToolState = 'pending', cwd, locale }: {
   readonly blocks: readonly AssistantBlock[]
   readonly streaming?: boolean
   readonly projectedToolCallIds: ReadonlySet<string>
   readonly unprojectedToolState?: Extract<ToolState, 'pending' | 'running' | 'interrupted'>
   readonly cwd?: string | undefined
+  readonly locale: 'en' | 'zh-CN'
 }) {
   return <>{blocks.map((block, index) => {
     const key = `${block.kind}-${String(index)}`
     if (block.kind === 'text') return <MarkdownText key={key} text={block.text} streaming={streaming} />
     if (block.kind === 'reasoning') {
-      return <details key={key} className="dsh-side-chat-reasoning"><summary>Reasoning</summary><pre>{block.text}</pre></details>
+      return (
+        <ReasoningRow
+          key={key}
+          text={block.text}
+          running={streaming && index === blocks.length - 1}
+          locale={locale}
+        />
+      )
     }
     if (block.kind === 'image') return <div key={key}>[Image attachment]</div>
     if (block.kind === 'tool-call') {
@@ -88,10 +195,11 @@ function AssistantBlocks({ blocks, streaming = false, projectedToolCallIds, unpr
   })}</>
 }
 
-function MessageRow({ node, projectedToolCallIds, cwd }: {
+function MessageRow({ node, projectedToolCallIds, cwd, locale }: {
   readonly node: ConversationNode
   readonly projectedToolCallIds: ReadonlySet<string>
   readonly cwd?: string | undefined
+  readonly locale: 'en' | 'zh-CN'
 }) {
   if (node.kind === 'user' || node.kind === 'steering') {
     return (
@@ -110,6 +218,7 @@ function MessageRow({ node, projectedToolCallIds, cwd }: {
           projectedToolCallIds={projectedToolCallIds}
           unprojectedToolState={node.interrupted === true ? 'interrupted' : 'pending'}
           cwd={cwd}
+          locale={locale}
         />
         {node.interrupted === true && <span className="dsh-side-chat-message-note">Stopped</span>}
       </article>
@@ -350,10 +459,10 @@ export function ArchivedConversation({
                   selections={[selection]}
                   messages={SIDE_CHAT_MESSAGES[locale]}
                 />
-                <MessageRow node={node} projectedToolCallIds={projectedToolCallIds} cwd={cwd} />
+                <MessageRow node={node} projectedToolCallIds={projectedToolCallIds} cwd={cwd} locale={locale} />
               </div>
             )
-          : <MessageRow key={`${node.kind}-${String(node.seq)}`} node={node} projectedToolCallIds={projectedToolCallIds} cwd={cwd} />)}
+          : <MessageRow key={`${node.kind}-${String(node.seq)}`} node={node} projectedToolCallIds={projectedToolCallIds} cwd={cwd} locale={locale} />)}
         {snapshot.partial !== null && (
           <article className="dsh-side-chat-message" data-role="assistant">
             <span className="dsh-side-chat-message-role">Assistant</span>
@@ -363,6 +472,7 @@ export function ArchivedConversation({
               projectedToolCallIds={projectedToolCallIds}
               unprojectedToolState="running"
               cwd={cwd}
+              locale={locale}
             />
           </article>
         )}

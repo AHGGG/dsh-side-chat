@@ -82,6 +82,71 @@
   max-width: 100%;
   overflow-x: auto;
 }
+.dsh-side-chat-reasoning {
+  display: flex;
+  flex-direction: column;
+}
+.dsh-side-chat-reasoning-row {
+  position: relative;
+  overflow: hidden;
+}
+.dsh-side-chat-reasoning[data-state="running"] .dsh-side-chat-reasoning-row::after {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 300px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 60%, transparent) 55%,
+    transparent 100%
+  );
+  content: '';
+  pointer-events: none;
+  animation: dsh-side-chat-reasoning-sweep 2.6s ease-out infinite;
+}
+@keyframes dsh-side-chat-reasoning-sweep {
+  0% { left: -300px; }
+  90%, 100% { left: 100%; }
+}
+.dsh-side-chat-reasoning-leading { flex-shrink: 0; }
+.dsh-side-chat-reasoning-chevron { color: var(--dsw-alias-label-secondary, var(--side-chat-muted)); }
+.dsh-side-chat-reasoning-title { font-weight: 400; }
+.dsh-side-chat-reasoning-separator {
+  width: 2px;
+  height: 2px;
+  flex: none;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--dsw-alias-label-caption, #a1a1aa);
+}
+.dsh-side-chat-reasoning-summary {
+  min-width: 0;
+  flex: auto;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary, var(--side-chat-muted));
+  font-size: 14px;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-side-chat-reasoning-summary[data-follow-end] { text-overflow: clip; }
+.dsh-side-chat-reasoning-body {
+  padding: 4px 0 4px 22px;
+  color: var(--dsw-alias-label-tertiary, var(--side-chat-muted));
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dsh-side-chat-reasoning-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 .dsh-side-chat-tool-branch {
   min-width: 0;
   max-width: 100%;
@@ -948,6 +1013,10 @@
     height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-side-chat-reasoning[data-state="running"] .dsh-side-chat-reasoning-row::after { animation: none; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
