@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.2...v0.5.0) (2026-08-15)
+
+
+### Features
+
+* persist conversation annotations ([cb05613](https://github.com/AHGGG/dsh-side-chat/commit/cb056134a4cf3b6974500baf4919dc81d97a7540))
+* persist conversation annotations ([d1fd773](https://github.com/AHGGG/dsh-side-chat/commit/d1fd7732f82d107bdaffb188dc7b792fd9aa9c97))
+
 ## [0.4.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.1...v0.4.2) (2026-08-15)
 
 
