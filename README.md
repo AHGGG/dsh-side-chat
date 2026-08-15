@@ -27,6 +27,15 @@ dsh web --port 3080
 
 Open the URL printed by DSH. The plugin loads automatically in the Web client.
 
+### Local linked development
+
+When `dsh plugin --profile web list` shows the plugin coming from a `link:` workspace, DSH loads the Git-ignored `lib/client.js`, not `src/`. Rebuild after switching branches or changing client source, then restart the `dsh web` process:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm build
+```
+
 ## Use Side Chat
 
 1. Complete at least one turn in the main conversation.

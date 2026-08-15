@@ -27,6 +27,15 @@ dsh web --port 3080
 
 打开 DSH 输出的网址，插件会自动加载到 Web 客户端中。
 
+### 本地链接调试
+
+当 `dsh plugin --profile web list` 显示插件来自 `link:` 工作区时，DSH 加载的是被 Git 忽略的 `lib/client.js`，而不是 `src/`。切换分支或修改客户端源码后，需要重新构建并重启 `dsh web` 进程：
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm build
+```
+
 ## 使用 Side Chat
 
 1. 在主会话中至少完成一轮对话。
