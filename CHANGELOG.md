@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.5.0...v0.6.0) (2026-08-15)
+
+
+### Features
+
+* add Side Chat model and reasoning controls ([3bafeac](https://github.com/AHGGG/dsh-side-chat/commit/3bafeac715655be5749f58b0ebc9b9e971d6e2c9))
+* add side chat model selection ([de921cc](https://github.com/AHGGG/dsh-side-chat/commit/de921cc5988c5edea86dbd8b0410df2accfc130a))
+* remember side chat model choice ([b0ad8d8](https://github.com/AHGGG/dsh-side-chat/commit/b0ad8d80995975b23c2566f3c85c439ec2e316f9))
+
+
+### Bug Fixes
+
+* match native side chat reasoning style ([c527efd](https://github.com/AHGGG/dsh-side-chat/commit/c527efdde7b49768b91411bf92b3a1bc5e194fd0))
+
 ## [0.5.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.2...v0.5.0) (2026-08-15)
 
 
