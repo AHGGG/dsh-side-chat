@@ -93,10 +93,12 @@ export class SideChatController implements HostObservable<SideChatState> {
         false,
       ))
     }
+    const modelSelection = this.sessions.sideChatModelPreference()
     this.publish({
       phase: 'draft',
       parentSessionId,
       ...(input.selection === undefined ? {} : { selection: input.selection }),
+      ...(modelSelection === undefined ? {} : { modelSelection }),
       draft: input.draft ?? '',
     })
     return success(undefined)
@@ -122,6 +124,17 @@ export class SideChatController implements HostObservable<SideChatState> {
     return success(undefined)
   }
 
+  initializeModel(selection: SideChatModelSelection): SideChatActionResult<SideChatModelSelection> {
+    const state = this.getSnapshot()
+    if (state.childSessionId !== undefined || !['draft', 'error'].includes(state.phase)
+      || state.error?.operation === 'close') {
+      return failure(localError('invalid_request', 'The Side Chat model cannot be initialized right now.', false))
+    }
+    const selected = { ...selection }
+    this.publish({ ...state, modelSelection: selected })
+    return success(selected)
+  }
+
   async selectModel(selection: SideChatModelSelection): Promise<SideChatActionResult<SideChatModelSelection>> {
     const state = this.getSnapshot()
     if (state.phase === 'closed' || ['creating', 'opening', 'closing'].includes(state.phase)
@@ -129,21 +142,21 @@ export class SideChatController implements HostObservable<SideChatState> {
       return failure(localError('invalid_request', 'The Side Chat model cannot be changed right now.', false))
     }
     const selected = { ...selection }
-    if (state.childSessionId === undefined) {
-      if (!['draft', 'error'].includes(state.phase)) {
-        return failure(localError('invalid_request', 'The Side Chat model cannot be changed right now.', false))
-      }
-      this.publish({ ...state, modelSelection: selected })
-      return success(selected)
+    const childSessionId = state.childSessionId
+    if (childSessionId === undefined) {
+      const initialized = this.initializeModel(selected)
+      if (initialized.ok) this.sessions.rememberSideChatModelPreference(initialized.value)
+      return initialized
     }
     const result = await this.invoke(() => this.remote.selectModel({
-      childSessionId: state.childSessionId!,
+      childSessionId,
       ...selected,
     }))
     if (!result.ok) return failure(result.error)
     const latest = this.getSnapshot()
-    if (latest.childSessionId === state.childSessionId && !['closed', 'closing'].includes(latest.phase)) {
+    if (latest.childSessionId === childSessionId && !['closed', 'closing'].includes(latest.phase)) {
       this.publish({ ...latest, modelSelection: result.value.selected })
+      this.sessions.rememberSideChatModelPreference(result.value.selected)
     }
     return success(result.value.selected)
   }

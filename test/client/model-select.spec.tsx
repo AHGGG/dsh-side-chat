@@ -68,7 +68,7 @@ describe('SideChatModelSelect', () => {
         provider: 'openai',
         model: 'o3',
         reasoningEffort: 'medium',
-      })
+      }, { remember: false })
     })
     const trigger = screen.getByRole('button', {
       name: 'Select model, current o3, reasoning effort Medium',
@@ -88,6 +88,34 @@ describe('SideChatModelSelect', () => {
         model: 'o3',
         reasoningEffort: 'low',
       })
+    })
+  })
+
+  it.each([
+    {
+      name: 'missing model',
+      selection: { provider: 'missing', model: 'retired' },
+      expected: { provider: 'openai', model: 'o3', reasoningEffort: 'medium' },
+    },
+    {
+      name: 'retired effort',
+      selection: { provider: 'openai', model: 'o3', reasoningEffort: 'ultra' },
+      expected: { provider: 'openai', model: 'o3', reasoningEffort: 'medium' },
+    },
+  ])('repairs a remembered $name from the current directory', async ({ selection, expected }) => {
+    const onInitialize = vi.fn()
+    render(
+      <SideChatModelSelect
+        directory={modelDirectory()}
+        selection={selection}
+        locked={false}
+        onInitialize={onInitialize}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onInitialize).toHaveBeenCalledWith(expected, { remember: true })
     })
   })
 

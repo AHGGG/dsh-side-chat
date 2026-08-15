@@ -88,8 +88,12 @@ export interface SideChatModelSelectProps {
   readonly directory: ModelDirectory
   readonly selection?: SideChatModelSelection | undefined
   readonly locked: boolean
+  readonly validateInitialSelection?: boolean
   readonly locale?: 'en' | 'zh-CN'
-  readonly onInitialize: (selection: SideChatModelSelection) => void
+  readonly onInitialize: (
+    selection: SideChatModelSelection,
+    options: { readonly remember: boolean },
+  ) => void
   readonly onSelect: (
     selection: SideChatModelSelection,
   ) => Promise<SideChatActionResult<SideChatModelSelection>>
@@ -103,11 +107,38 @@ function sameModel(
   return selection?.provider === provider && selection.model === model
 }
 
+function sameSelection(left: SideChatModelSelection, right: SideChatModelSelection): boolean {
+  return left.provider === right.provider
+    && left.model === right.model
+    && left.reasoningEffort === right.reasoningEffort
+}
+
+function repairSelection(
+  selection: SideChatModelSelection,
+  choices: readonly ModelChoice[],
+  fallback: SideChatModelSelection,
+): SideChatModelSelection {
+  const choice = choices.find(candidate => sameModel(selection, candidate.group.id, candidate.model.id))
+  if (choice === undefined) return fallback
+  const reasoning = choice.model.reasoning
+  if (reasoning === undefined) return { provider: selection.provider, model: selection.model }
+  if (selection.reasoningEffort === undefined
+    || reasoning.efforts.some(effort => effort.id === selection.reasoningEffort)) {
+    return selection
+  }
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...(reasoning.defaultEffort === undefined ? {} : { reasoningEffort: reasoning.defaultEffort }),
+  }
+}
+
 /** Side Chat projection of DSH Web's native composer model selector. */
 export function SideChatModelSelect({
   directory,
   selection,
   locked,
+  validateInitialSelection = true,
   locale = 'en',
   onInitialize,
   onSelect,
@@ -166,16 +197,29 @@ export function SideChatModelSelect({
   useEffect(() => { reload() }, [directory])
 
   useEffect(() => {
-    if (initialized.current || selection !== undefined || state.current === null) return
-    initialized.current = true
-    onInitialize({
+    if (initialized.current) return
+    if (selection !== undefined && !validateInitialSelection) {
+      initialized.current = true
+      return
+    }
+    if (state.current === null) return
+    const directoryCurrent: SideChatModelSelection = {
       provider: state.current.provider,
       model: state.current.model,
       ...(state.current.reasoningEffort === undefined
         ? {}
         : { reasoningEffort: state.current.reasoningEffort }),
-    })
-  }, [onInitialize, selection, state.current])
+    }
+    if (selection === undefined) {
+      initialized.current = true
+      onInitialize(directoryCurrent, { remember: false })
+      return
+    }
+    if (state.status !== 'ready') return
+    initialized.current = true
+    const repaired = repairSelection(selection, choices, directoryCurrent)
+    if (!sameSelection(selection, repaired)) onInitialize(repaired, { remember: true })
+  }, [choices, onInitialize, selection, state.current, state.status, validateInitialSelection])
 
   useEffect(() => {
     if (!open) return

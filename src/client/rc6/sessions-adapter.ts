@@ -24,6 +24,7 @@ import type {
 import type {
   ConversationSelection,
   SessionId,
+  SideChatModelSelection,
   SideChatPromptPart,
   SideChatWireError,
 } from '../../shared/contracts.js'
@@ -39,6 +40,7 @@ import type {
   ParentComposerInputSnapshot,
 } from '../parent-composer/add-to-conversation.js'
 import { ConversationAnnotationPersistence } from '../parent-composer/annotation-persistence.js'
+import { SideChatModelPreferences } from '../model-preference.js'
 import type { Rc6ClientContext } from './context.js'
 
 const BINDING_WAIT_MS = 8_000
@@ -200,6 +202,7 @@ class Rc6SessionBinding implements SideChatSessionBinding {
 export class Rc6SideChatSessions implements SideChatClientSessions {
   private readonly renamed = new Set<SessionId>()
   private readonly annotationPersistence = new ConversationAnnotationPersistence()
+  private readonly modelPreferences = new SideChatModelPreferences()
 
   constructor(private readonly ctx: Rc6ClientContext) {}
 
@@ -342,6 +345,14 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     } catch {
       return undefined
     }
+  }
+
+  sideChatModelPreference(): SideChatModelSelection | undefined {
+    return this.modelPreferences.get()
+  }
+
+  rememberSideChatModelPreference(selection: SideChatModelSelection): void {
+    this.modelPreferences.set(selection)
   }
 
   private currentParentInput(): ParentComposerInput | undefined {

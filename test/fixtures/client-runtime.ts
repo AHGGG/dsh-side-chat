@@ -1,5 +1,6 @@
 import type {
   SessionId,
+  SideChatModelSelection,
   SideChatPromptPart,
   SideChatRemote,
   SideChatResult,
@@ -75,6 +76,7 @@ export class FakeClientSessions implements SideChatClientSessions {
   readonly retainCalls: SessionId[] = []
   readonly opened: SessionId[] = []
   readonly notifications: string[] = []
+  modelPreference: SideChatModelSelection | undefined
   released = 0
   failRetain = false
   selectionCurrent = true
@@ -83,6 +85,12 @@ export class FakeClientSessions implements SideChatClientSessions {
   currentSessionId(): SessionId | undefined { return this.current }
   lastCompletedSeq(_parentSessionId: SessionId): number | undefined { return this.lastSeq }
   selectionIsCurrent(): boolean { return this.selectionCurrent }
+  sideChatModelPreference(): SideChatModelSelection | undefined {
+    return this.modelPreference
+  }
+  rememberSideChatModelPreference(selection: SideChatModelSelection): void {
+    this.modelPreference = { ...selection }
+  }
 
   async retain(id: SessionId): Promise<SideChatSessionLease> {
     this.retainCalls.push(id)

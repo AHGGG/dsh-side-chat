@@ -53,6 +53,11 @@ describe('SideChatController', () => {
       modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
     }])
     expect(remote.selectModelCalls).toHaveLength(0)
+    expect(sessions.modelPreference).toEqual({
+      provider: 'openai',
+      model: 'gpt-fast',
+      reasoningEffort: 'low',
+    })
     expect(sessions.current).toBe('parent-1')
   })
 
@@ -75,7 +80,45 @@ describe('SideChatController', () => {
       provider: 'deepseek',
       model: 'deepseek-reasoner',
     })
+    expect(sessions.modelPreference).toEqual({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })
     expect(sessions.current).toBe('parent-1')
+  })
+
+  it('restores the last explicit model choice in a new Side Chat globally', async () => {
+    const { controller, sessions } = setup()
+    controller.openDraft()
+    await controller.selectModel({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'off',
+    })
+    await controller.close()
+
+    sessions.current = SessionId('parent-2')
+    expect(controller.openDraft()).toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({
+      parentSessionId: 'parent-2',
+      modelSelection: {
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        reasoningEffort: 'off',
+      },
+    })
+  })
+
+  it('does not remember a model that was only inherited during initialization', () => {
+    const { controller, sessions } = setup()
+    controller.openDraft()
+
+    expect(controller.initializeModel({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'max',
+    }).ok).toBe(true)
+    expect(sessions.modelPreference).toBeUndefined()
   })
 
   it('revalidates a selected message before creating', async () => {

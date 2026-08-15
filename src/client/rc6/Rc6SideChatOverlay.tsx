@@ -203,8 +203,12 @@ export function Rc6SideChatOverlay({
           directory={modelDirectory}
           selection={state.modelSelection}
           locked={['creating', 'opening', 'closing'].includes(state.phase) || state.error?.operation === 'close'}
+          validateInitialSelection={state.childSessionId === undefined}
           locale={locale}
-          onInitialize={(selection) => { void controller.selectModel(selection) }}
+          onInitialize={(selection, options) => {
+            if (options.remember) void controller.selectModel(selection)
+            else controller.initializeModel(selection)
+          }}
           onSelect={(selection) => controller.selectModel(selection)}
         />
       )
