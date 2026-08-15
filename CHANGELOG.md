@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.1...v0.4.2) (2026-08-15)
+
+
+### Bug Fixes
+
+* align side chat tools with native dsh ([da58bdd](https://github.com/AHGGG/dsh-side-chat/commit/da58bdd45b077e90ee00fa36a058ec1df1602e67))
+
 ## [0.4.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.4.0...v0.4.1) (2026-08-14)
 
 
