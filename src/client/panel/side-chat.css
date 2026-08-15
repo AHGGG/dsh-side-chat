@@ -409,9 +409,7 @@
   left: 0;
   height: 8px;
 }
-.dsh-side-chat-quote:hover .dsh-side-chat-quote-details,
 .dsh-side-chat-quote[data-hovered] .dsh-side-chat-quote-details,
-.dsh-side-chat-quote:focus-within .dsh-side-chat-quote-details,
 .dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-details {
   opacity: 1;
   pointer-events: auto;
@@ -478,7 +476,10 @@
   width: calc(100% - 32px);
   max-width: var(--dsh-composer-card-max-width, 780px);
   height: 0;
-  margin: 0 auto;
+  /* The terminal zero-height dock would otherwise add a second gap between
+     Todo/Goal/Queue and the input card. Its child still lands 10px inside the
+     following card: -gap + top:16px against the card's own 6px gap. */
+  margin: calc(0px - var(--dsh-composer-stack-gap, 6px)) auto 0;
   pointer-events: none;
 }
 .dsh-side-chat-parent-annotation-dock > .dsh-side-chat-quote {
@@ -490,11 +491,15 @@
 .dsh-side-chat-parent-user-message {
   display: flex;
   width: 100%;
+  min-width: 0;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 8px;
 }
 .dsh-side-chat-parent-user-message > .dsh-side-chat-quote { align-self: flex-end; }
+/* rc.6 caps its inner user stack at 82%; give that percentage the full chat
+   column as its containing width instead of the annotation chip's shrink width. */
+.dsh-side-chat-parent-user-message-body { width: 100%; min-width: 0; }
 .dsh-side-chat-parent-user-message > .dsh-side-chat-quote .dsh-side-chat-quote-details {
   right: 0;
   left: auto;
@@ -597,22 +602,47 @@
   border-radius: 0;
 }
 
+::highlight(dsh-side-chat-annotations) {
+  background: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 18%, transparent);
+}
+::highlight(dsh-side-chat-active-annotation) {
+  background: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 32%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 70%, transparent);
+  text-decoration-thickness: 1px;
+}
+
+.dsh-side-chat-annotation-marker,
 .dsh-side-chat-selection-marker {
   position: fixed;
   z-index: 91;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  box-sizing: border-box;
   place-items: center;
-  border: 2px solid var(--dsw-surface, #fff);
+  padding: 0;
+  border: 0;
   border-radius: 999px;
   background: var(--dsw-alias-button-info, #1473e6);
-  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 14%);
   color: #fff;
-  font-size: 13px;
+  font: inherit;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
-  pointer-events: none;
+}
+.dsh-side-chat-annotation-marker { cursor: pointer; }
+.dsh-side-chat-selection-marker { pointer-events: none; }
+.dsh-side-chat-annotation-marker[data-large],
+.dsh-side-chat-selection-marker[data-large] { font-size: 9px; }
+.dsh-side-chat-annotation-marker[data-active] {
+  background: var(--dsw-alias-button-info-hover, #3467d6);
+}
+.dsh-side-chat-annotation-marker:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 32%, transparent);
+  outline-offset: 1px;
 }
 
 .dsh-side-chat-selection-comment {
@@ -709,5 +739,6 @@
 @media (forced-colors: active) {
 .dsh-side-chat-panel,
 .dsh-side-chat-selection-actions,
-.dsh-side-chat-selection-comment { border: 1px solid CanvasText; }
+.dsh-side-chat-selection-comment,
+.dsh-side-chat-annotation-marker { border: 1px solid CanvasText; }
 }

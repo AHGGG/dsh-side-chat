@@ -4,7 +4,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationSnapshot, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
 import { SideChatPanel } from '../../src/client/panel/SideChatPanel.js'
-import { annotatedUserMessageRenderer } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
+import {
+  annotatedUserMessageRenderer,
+  mountParentConversationAnnotations,
+} from '../../src/client/parent-composer/ParentConversationAnnotations.js'
 import { ArchivedConversation } from '../../src/client/rc6/ArchivedConversation.js'
 import { SelectionActions } from '../../src/client/selection/SelectionActions.js'
 import type { SideChatController } from '../../src/client/side-chat-controller.js'
@@ -45,6 +48,10 @@ describe('Side Chat components', () => {
     expect(buttons.map(button => button.textContent)).toEqual(['Add to chat', 'More details', 'Ask in side chat'])
     fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
     expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+    expect(document.querySelector('.dsh-side-chat-selection-marker')).toHaveStyle({
+      left: '183px',
+      top: '88px',
+    })
     expect(add).not.toHaveBeenCalled()
     fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
       target: { value: 'This is the key line.' },
@@ -69,6 +76,32 @@ describe('Side Chat components', () => {
     dismiss.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Ask in side chat' }))
     expect(ask).toHaveBeenCalledWith(selection)
+    expect(dismiss).toHaveBeenCalledOnce()
+  })
+
+  it('opens an existing annotation directly for comment editing', () => {
+    const update = vi.fn()
+    const dismiss = vi.fn()
+    render(<SelectionActions
+      selection={selection}
+      annotationNumber={2}
+      annotationEditor={{
+        initialComment: 'Existing note',
+        dialogLabel: 'Edit annotation comment',
+      }}
+      onAddToChat={update}
+      onMoreDetails={() => {}}
+      onAskInSideChat={() => {}}
+      onDismiss={dismiss}
+    />)
+
+    const editor = screen.getByRole('textbox', { name: 'Optional annotation comment' })
+    expect(screen.getByRole('dialog', { name: 'Edit annotation comment' })).toBeInTheDocument()
+    expect(editor).toHaveValue('Existing note')
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).not.toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: 'Revised note' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(selection, 'Revised note')
     expect(dismiss).toHaveBeenCalledOnce()
   })
 
@@ -191,11 +224,33 @@ describe('Side Chat components', () => {
     }
   })
 
+  it('mounts the zero-height annotation projection after Todo, Goal, and Queue docks', () => {
+    const register = vi.fn(() => () => {})
+    const inject = vi.fn((_name: string, mount: () => () => void) => mount())
+    const dispose = mountParentConversationAnnotations({
+      slots: {
+        inject,
+        register,
+        entries: () => [],
+      },
+    } as never, () => {})
+
+    expect(register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'conversation.input.dock',
+        id: 'dsh-side-chat-annotations',
+        order: 30,
+      }),
+      expect.anything(),
+    )
+    dispose()
+  })
+
   it('renders sent main-chat annotations above the native user message', () => {
     const NativeUserMessage = ({ node }: {
       readonly node: { readonly data: { readonly content: readonly unknown[] } }
     }) => (
-      <div data-testid="native-user-message">
+      <div className="native-user-row" data-testid="native-user-message">
         {node.data.content.map(block => (
           typeof block === 'object' && block !== null && 'text' in block
             ? String((block as { readonly text: unknown }).text)
@@ -229,14 +284,29 @@ describe('Side Chat components', () => {
       },
     }} />)
 
-    expect(screen.getByRole('button', { name: 'Expand: Selected passage' }))
-      .toHaveTextContent('2 annotations')
+    const trigger = screen.getByRole('button', { name: 'Expand: Selected passage' })
+    const quote = trigger.closest<HTMLElement>('.dsh-side-chat-quote')!
+    expect(trigger).toHaveTextContent('2 annotations')
     expect(screen.getByTestId('native-user-message')).toHaveTextContent('Explain both.')
     expect(screen.getByTestId('native-user-message')).not.toHaveTextContent('selected_context')
-    fireEvent.click(screen.getByRole('button', { name: 'Expand: Selected passage' }))
+    expect(screen.getByTestId('native-user-message').parentElement)
+      .toHaveClass('dsh-side-chat-parent-user-message-body')
+
+    fireEvent.mouseEnter(quote)
+    fireEvent.click(trigger)
+    expect(quote).toHaveAttribute('data-expanded')
     expect(screen.getByText('First passage')).toBeInTheDocument()
     expect(screen.getByText('Explain this one first.')).toBeInTheDocument()
     expect(screen.getByText('Second passage')).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(quote).not.toHaveAttribute('data-expanded')
+    expect(quote).not.toHaveAttribute('data-hovered')
+
+    fireEvent.mouseEnter(quote)
+    fireEvent.click(trigger)
+    fireEvent.click(trigger)
+    expect(quote).not.toHaveAttribute('data-expanded')
+    expect(quote).not.toHaveAttribute('data-hovered')
     expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove annotation' })).not.toBeInTheDocument()
   })

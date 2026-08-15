@@ -108,7 +108,9 @@ export function annotatedUserMessageRenderer(Original: UserNodeRenderer): (props
           selections={parsed.annotations}
           messages={SIDE_CHAT_MESSAGES[currentLocale()]}
         />
-        {createElement(Original, { ...props, node })}
+        <div className="dsh-side-chat-parent-user-message-body">
+          {createElement(Original, { ...props, node })}
+        </div>
       </div>
     )
   }
@@ -123,7 +125,9 @@ export function mountParentConversationAnnotations(
   const removeDock = slots.inject('conversation.input.dock', () => slots.register({
     name: 'conversation.input.dock',
     id: 'dsh-side-chat-annotations',
-    order: -100,
+    // This zero-height projection must follow Todo (0), Goal (10), and Queue
+    // (20), so its absolute child remains anchored to the input card below.
+    order: 30,
   }, ({ input }: { readonly input: ParentComposerInputSnapshot }) => (
     <ParentComposerAnnotations input={input} onRemove={removeAnnotations} />
   )))

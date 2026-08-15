@@ -1,13 +1,19 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
 import type { ConversationSelection } from '../../shared/contracts.js'
+import {
+  conversationSelectionAnnotations,
+  type ConversationSelectionAnnotation,
+} from '../parent-composer/add-to-conversation.js'
 import type { SideChatController } from '../side-chat-controller.js'
 import { SideChatPanel } from '../panel/SideChatPanel.js'
+import { ConversationAnnotationMarkers } from '../selection/ConversationAnnotationMarkers.js'
 import { captureDomConversationSelection } from '../selection/selection-controller.js'
 import { SelectionActions } from '../selection/SelectionActions.js'
 import { ArchivedConversation } from './ArchivedConversation.js'
@@ -23,6 +29,7 @@ function captureEvent(event: MouseEvent | KeyboardEvent): boolean {
       '[data-side-chat-panel]',
       '.dsh-side-chat-selection-actions',
       '.dsh-side-chat-selection-comment',
+      '.dsh-side-chat-annotation-marker',
     ].join(', ')) !== null)
 }
 
@@ -60,7 +67,17 @@ export function Rc6SideChatOverlay({
     () => sessions.currentSessionId(),
     () => sessions.currentSessionId(),
   )
+  const composerInput = useSyncExternalStore(
+    sessions.subscribeConversationInput,
+    sessions.currentConversationInputSnapshot,
+    sessions.currentConversationInputSnapshot,
+  )
+  const annotations = useMemo(
+    () => composerInput === undefined ? [] : conversationSelectionAnnotations(composerInput),
+    [composerInput],
+  )
   const [selection, setSelection] = useState<ConversationSelection | null>(null)
+  const [editingAnnotation, setEditingAnnotation] = useState<ConversationSelectionAnnotation | null>(null)
   const captureGeneration = useRef(0)
   const mouseDownPoint = useRef<{ readonly x: number; readonly y: number } | null>(null)
   const annotationEditing = useRef(false)
@@ -108,6 +125,7 @@ export function Rc6SideChatOverlay({
       annotationEditing.current = false
       ++captureGeneration.current
       setSelection(null)
+      setEditingAnnotation(null)
     }
     const onMouseUp = (event: MouseEvent): void => {
       const start = mouseDownPoint.current
@@ -128,7 +146,9 @@ export function Rc6SideChatOverlay({
     const onKeyUp = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         ++captureGeneration.current
+        annotationEditing.current = false
         setSelection(null)
+        setEditingAnnotation(null)
         void controller.close()
         return
       }
@@ -150,7 +170,19 @@ export function Rc6SideChatOverlay({
     ++captureGeneration.current
     annotationEditing.current = false
     setSelection(null)
+    setEditingAnnotation(null)
   }, [currentSessionId])
+
+  useEffect(() => {
+    if (composerInput !== undefined) sessions.reconcileConversationAnnotationPersistence()
+  }, [composerInput, sessions])
+
+  useEffect(() => {
+    if (editingAnnotation === null) return
+    if (annotations.some(annotation => annotation.annotationIndex === editingAnnotation.annotationIndex)) return
+    annotationEditing.current = false
+    setEditingAnnotation(null)
+  }, [annotations, editingAnnotation])
 
   const askDisabledReason = state.phase === 'closed'
     ? undefined
@@ -162,6 +194,18 @@ export function Rc6SideChatOverlay({
 
   return (
     <div className="dsh-side-chat-overlay">
+      <ConversationAnnotationMarkers
+        annotations={annotations}
+        {...editingAnnotation === null
+          ? {}
+          : { activeAnnotationIndex: editingAnnotation.annotationIndex }}
+        onEdit={(annotation, restoredSelection) => {
+          annotationEditing.current = true
+          ++captureGeneration.current
+          setSelection(null)
+          setEditingAnnotation({ ...annotation, selection: restoredSelection })
+        }}
+      />
       {selection !== null && (
         <SelectionActions
           selection={selection}
@@ -191,6 +235,37 @@ export function Rc6SideChatOverlay({
           onDismiss={() => {
             annotationEditing.current = false
             setSelection(null)
+          }}
+        />
+      )}
+      {editingAnnotation !== null && (
+        <SelectionActions
+          key={`annotation:${String(editingAnnotation.annotationIndex)}`}
+          selection={editingAnnotation.selection}
+          annotationNumber={editingAnnotation.annotationIndex + 1}
+          annotationEditor={{
+            ...(editingAnnotation.comment === undefined
+              ? {}
+              : { initialComment: editingAnnotation.comment }),
+            dialogLabel: 'Edit annotation comment',
+          }}
+          onAddToChat={(_captured, comment) => {
+            try {
+              if (!sessions.updateConversationAnnotation(editingAnnotation.annotationIndex, comment)) {
+                sessions.notify({ kind: 'warning', text: 'Could not update the annotation.' })
+              }
+            } catch {
+              sessions.notify({ kind: 'warning', text: 'Could not update the annotation.' })
+            }
+            annotationEditing.current = false
+            setEditingAnnotation(null)
+          }}
+          onAnnotationEditorChange={(open) => { annotationEditing.current = open }}
+          onMoreDetails={() => {}}
+          onAskInSideChat={() => {}}
+          onDismiss={() => {
+            annotationEditing.current = false
+            setEditingAnnotation(null)
           }}
         />
       )}

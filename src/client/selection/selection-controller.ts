@@ -24,6 +24,13 @@ export interface SelectionAnchorResolver {
   resolve(anchor: HTMLElement): SelectionNodeDescriptor | undefined
 }
 
+export interface RestoredConversationSelection {
+  /** Exact visible text-node slices used by the Custom Highlight API. */
+  readonly ranges: readonly Range[]
+  /** One encompassing range used to restore the browser selection. */
+  readonly browserRange: Range
+}
+
 function anchorOf(node: Node): HTMLElement | null {
   const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement
   return element?.closest<HTMLElement>('[data-chat-anchor-key]') ?? null
@@ -144,4 +151,64 @@ export async function captureDomConversationSelection(input: {
       viewportHeight: window.innerHeight,
     },
   })
+}
+
+function anchorByKey(root: HTMLElement, nodeKey: string): HTMLElement | undefined {
+  return [...root.querySelectorAll<HTMLElement>('[data-chat-anchor-key]')]
+    .find(anchor => anchor.dataset['chatAnchorKey'] === nodeKey)
+}
+
+function restoreFragmentRanges(
+  root: HTMLElement,
+  fragment: SelectionFragment,
+): readonly Range[] | undefined {
+  const anchor = anchorByKey(root, fragment.nodeKey)
+  if (anchor === undefined) return
+  const nodes = acceptedTextNodes(anchor, root)
+  const visibleText = nodes.map(node => node.data).join('')
+  if (!Number.isSafeInteger(fragment.startOffset)
+    || !Number.isSafeInteger(fragment.endOffset)
+    || fragment.startOffset < 0
+    || fragment.endOffset <= fragment.startOffset
+    || fragment.endOffset > visibleText.length
+    || visibleText.slice(fragment.startOffset, fragment.endOffset) !== fragment.text) {
+    return
+  }
+
+  const ranges: Range[] = []
+  let visibleOffset = 0
+  for (const node of nodes) {
+    const nodeEnd = visibleOffset + node.data.length
+    const start = Math.max(fragment.startOffset, visibleOffset) - visibleOffset
+    const end = Math.min(fragment.endOffset, nodeEnd) - visibleOffset
+    if (end > start) {
+      const range = document.createRange()
+      range.setStart(node, start)
+      range.setEnd(node, end)
+      ranges.push(range)
+    }
+    visibleOffset = nodeEnd
+    if (visibleOffset >= fragment.endOffset) break
+  }
+  return ranges.length === 0 ? undefined : ranges
+}
+
+/** Rebuild a saved selection only when its anchored visible text still matches. */
+export function restoreDomConversationSelection(input: {
+  readonly selection: ConversationSelection
+  readonly conversationRoot: HTMLElement
+}): RestoredConversationSelection | undefined {
+  const ranges: Range[] = []
+  for (const fragment of input.selection.fragments) {
+    const restored = restoreFragmentRanges(input.conversationRoot, fragment)
+    if (restored === undefined) return
+    ranges.push(...restored)
+  }
+  const first = ranges[0]
+  const last = ranges.at(-1)
+  if (first === undefined || last === undefined) return
+  const browserRange = document.createRange()
+  browserRange.setStart(first.startContainer, first.startOffset)
+  browserRange.setEnd(last.endContainer, last.endOffset)
+  return { ranges, browserRange }
 }

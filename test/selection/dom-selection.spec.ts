@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { describe, expect, it } from 'vitest'
-import { captureDomConversationSelection } from '../../src/client/selection/selection-controller.js'
+import {
+  captureDomConversationSelection,
+  restoreDomConversationSelection,
+} from '../../src/client/selection/selection-controller.js'
 import { SessionId } from '../../src/shared/contracts.js'
 
 function resolver(anchor: HTMLElement) {
@@ -40,6 +43,16 @@ describe('rc.6 DOM selection', () => {
     })
     expect(captured.text).toBe('ello wor')
     expect(captured.fragments[0]).toMatchObject({ nodeKey: 'node-1', seq: 4 })
+
+    selection.removeAllRanges()
+    const restored = restoreDomConversationSelection({ selection: captured, conversationRoot: root })
+    expect(restored?.ranges.map(restoredRange => restoredRange.toString())).toEqual(['ello ', 'wor'])
+    expect(restored?.browserRange.toString()).toBe('ello wor')
+    selection.addRange(restored!.browserRange)
+    expect(selection.toString()).toBe('ello wor')
+
+    last.textContent = 'changed'
+    expect(restoreDomConversationSelection({ selection: captured, conversationRoot: root })).toBeUndefined()
   })
 
   it('fails closed across message anchors', async () => {

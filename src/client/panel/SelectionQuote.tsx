@@ -40,6 +40,21 @@ export function SelectionQuote({
     if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
   }, [])
 
+  useEffect(() => {
+    if (!expanded) return
+    const dismissOutside = (event: MouseEvent): void => {
+      const quote = quoteRef.current
+      const target = event.target
+      if (quote !== null && target instanceof Node && quote.contains(target)) return
+      if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
+      leaveTimerRef.current = undefined
+      setHovered(false)
+      setExpanded(false)
+    }
+    document.addEventListener('mousedown', dismissOutside, true)
+    return () => { document.removeEventListener('mousedown', dismissOutside, true) }
+  }, [expanded])
+
   const constrainDetailsToBoundary = () => {
     const details = detailsRef.current
     const boundary = quoteRef.current?.closest<HTMLElement>(
@@ -77,7 +92,14 @@ export function SelectionQuote({
           className="dsh-side-chat-quote-trigger"
           aria-expanded={expanded}
           aria-label={`${expanded ? messages.collapse : messages.expand}: ${messages.selectedPassage}`}
-          onClick={() => { setExpanded(value => !value) }}
+          onClick={() => {
+            if (expanded) {
+              if (leaveTimerRef.current !== undefined) window.clearTimeout(leaveTimerRef.current)
+              leaveTimerRef.current = undefined
+              setHovered(false)
+            }
+            setExpanded(value => !value)
+          }}
         >
           <svg className="dsh-side-chat-quote-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
