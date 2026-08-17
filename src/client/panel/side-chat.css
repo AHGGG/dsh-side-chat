@@ -1,3 +1,20 @@
+.dsh-side-chat-overlay,
+.dsh-side-chat-parent-annotation-dock,
+.dsh-side-chat-parent-user-message {
+  /* DSH rc.6 themes publish the semantic alias layer. Keep the legacy tokens
+     as fallbacks for older hosts instead of falling through to light colors
+     while the host has selected its dark palette. */
+  --side-chat-border: var(--dsw-alias-border-l2, var(--dsw-border, #d8d8de));
+  --side-chat-bg: var(--dsw-alias-bg-layer-2, var(--dsw-surface, #ffffff));
+  --side-chat-muted: var(--dsw-alias-label-tertiary, var(--dsw-text-muted, #62636a));
+  --side-chat-text: var(--dsw-alias-label-primary, var(--dsw-text, #19191d));
+  --side-chat-accent: var(--dsw-alias-state-business-primary, #1473e6);
+  --side-chat-accent-fill: var(--dsw-alias-button-info-fill, #4176e6);
+  --side-chat-accent-hover: var(--dsw-alias-button-info-hover, #3467d6);
+  --side-chat-accent-text: var(--dsw-alias-label-primary-foreground, #ffffff);
+  color: var(--side-chat-text);
+}
+
 .dsh-side-chat-overlay {
   pointer-events: none;
 }
@@ -7,9 +24,6 @@
 }
 
 .dsh-side-chat-panel {
-  --side-chat-border: var(--dsw-border, #d8d8de);
-  --side-chat-bg: var(--dsw-surface, #ffffff);
-  --side-chat-muted: var(--dsw-text-muted, #62636a);
   position: fixed;
   z-index: 70;
   right: clamp(12px, 2vw, 20px);
@@ -26,7 +40,7 @@
   border: 1px solid var(--side-chat-border);
   border-radius: 28px;
   background: var(--side-chat-bg);
-  color: var(--dsw-text, #19191d);
+  color: var(--side-chat-text);
   box-shadow: 0 12px 36px rgb(0 0 0 / 11%), 0 2px 8px rgb(0 0 0 / 6%);
 }
 
@@ -56,12 +70,12 @@
   padding: 10px 12px;
   border: 1px solid var(--side-chat-border);
   border-radius: 12px;
-  background: var(--dsw-surface-subtle, #f7f7f9);
+  background: var(--dsw-alias-bg-layer-3, var(--dsw-surface-subtle, #f7f7f9));
 }
 
 .dsh-side-chat-message[data-role="user"] {
   align-self: end;
-  background: var(--dsw-accent-soft, #eef4ff);
+  background: var(--dsw-specific-bubble, var(--dsw-accent-soft, #eef4ff));
 }
 
 .dsh-side-chat-message[data-role="assistant"] {
@@ -187,7 +201,7 @@
 }
 .dsh-side-chat-tool-row:focus-visible {
   border-radius: 4px;
-  outline: 2px solid color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 42%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--side-chat-accent) 42%, transparent);
   outline-offset: 1px;
 }
 .dsh-side-chat-tool-leading { flex-shrink: 0; }
@@ -293,7 +307,7 @@
 .dsh-side-chat-interaction-actions,
 .dsh-side-chat-queue > div { display: flex; justify-content: end; gap: 8px; }
 .dsh-side-chat-interaction button,
-.dsh-side-chat-queue button { min-height: 32px; border: 1px solid var(--side-chat-border); border-radius: 7px; background: var(--dsw-control, #f7f7f9); color: inherit; cursor: pointer; }
+.dsh-side-chat-queue button { min-height: 32px; border: 1px solid var(--side-chat-border); border-radius: 7px; background: var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-control, #f7f7f9)); color: inherit; cursor: pointer; }
 .dsh-side-chat-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -570,7 +584,7 @@
   min-height: 32px;
   border: 1px solid var(--side-chat-border);
   border-radius: 7px;
-  background: var(--dsw-control, #f7f7f9);
+  background: var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-control, #f7f7f9));
   color: inherit;
   cursor: pointer;
 }
@@ -593,7 +607,7 @@
   font-size: 20px;
   line-height: 1;
 }
-.dsh-side-chat-header > button:last-child:hover { background: var(--dsw-surface-subtle, #f3f3f5); }
+.dsh-side-chat-header > button:last-child:hover { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5)); }
 
 .dsh-side-chat-quote { position: relative; max-width: 100%; align-self: flex-start; }
 .dsh-side-chat-quote-chip {
@@ -609,7 +623,7 @@
 }
 .dsh-side-chat-quote:hover .dsh-side-chat-quote-chip,
 .dsh-side-chat-quote:focus-within .dsh-side-chat-quote-chip,
-.dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-chip { background: var(--dsw-surface-subtle, #f3f3f5); }
+.dsh-side-chat-quote[data-expanded] .dsh-side-chat-quote-chip { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5)); }
 .dsh-side-chat-quote-chip .dsh-side-chat-quote-trigger {
   display: inline-flex;
   min-height: 34px;
@@ -663,7 +677,7 @@
   opacity: 1;
   pointer-events: auto;
 }
-.dsh-side-chat-quote-remove:hover { background: rgb(0 0 0 / 6%); color: inherit; }
+.dsh-side-chat-quote-remove:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%)); color: inherit; }
 .dsh-side-chat-quote-details {
   position: absolute;
   z-index: 10;
@@ -729,8 +743,8 @@
 }
 .dsh-side-chat-quote-comment > strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
 .dsh-side-chat-quote-comment > pre { margin-top: 4px; }
-.dsh-side-chat-error { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--side-chat-border); border-radius: 14px; background: var(--dsw-surface-subtle, #f7f7f9); }
-.dsh-side-chat-error { border-color: var(--dsw-danger, #b42318); }
+.dsh-side-chat-error { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--side-chat-border); border-radius: 14px; background: var(--dsw-alias-interactive-bg-hover-danger, var(--dsw-surface-subtle, #f7f7f9)); }
+.dsh-side-chat-error { border-color: var(--dsw-alias-state-error-primary, var(--dsw-danger, #b42318)); }
 .dsh-side-chat-body { min-height: 0; flex: 1; overflow: hidden; }
 .dsh-side-chat-annotated-user-message {
   display: flex;
@@ -746,13 +760,6 @@
    plugin-owned capsule supplies the visible and interactive projection. */
 [data-composer-seat] [data-decoration="chip"][title="__dsh_side_chat_annotations__"] {
   visibility: hidden;
-}
-.dsh-side-chat-parent-annotation-dock,
-.dsh-side-chat-parent-user-message {
-  --side-chat-border: var(--dsw-border, #d8d8de);
-  --side-chat-bg: var(--dsw-surface, #ffffff);
-  --side-chat-muted: var(--dsw-text-muted, #62636a);
-  color: var(--dsw-text, #19191d);
 }
 .dsh-side-chat-parent-annotation-dock {
   position: relative;
@@ -838,8 +845,8 @@
   padding: 1px 6px;
   border: 0;
   border-radius: 999px;
-  background: var(--dsw-alias-button-info-fill, #4176e6);
-  color: #fff;
+  background: var(--side-chat-accent-fill);
+  color: var(--side-chat-accent-text);
   cursor: pointer;
   line-height: 1;
   transform: translateY(-2px);
@@ -847,7 +854,7 @@
 }
 .dsh-side-chat-panel .dsh-side-chat-send-button:hover:not(:disabled),
 .dsh-side-chat-panel .dsh-side-chat-stop-button:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover, #3467d6);
+  background: var(--side-chat-accent-hover);
 }
 .dsh-side-chat-panel .dsh-side-chat-send-button:disabled,
 .dsh-side-chat-panel .dsh-side-chat-stop-button:disabled { cursor: default; opacity: .4; }
@@ -862,10 +869,11 @@
   flex-wrap: wrap;
   gap: 0;
   padding: 0;
-  border: 1px solid var(--dsw-border, #d8d8de);
+  border: 1px solid var(--side-chat-border);
   border-radius: 999px;
-  background: var(--dsw-surface, #fff);
+  background: var(--dsw-alias-button-floating-fill, var(--side-chat-bg));
   box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+  color: var(--side-chat-text);
   overflow: hidden;
 }
 .dsh-side-chat-selection-actions button {
@@ -879,20 +887,20 @@
 }
 .dsh-side-chat-selection-actions button:hover:not(:disabled),
 .dsh-side-chat-selection-actions button:focus-visible {
-  background: var(--dsw-surface-subtle, #f3f3f5);
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5));
 }
 .dsh-side-chat-selection-actions button + button {
-  border-left: 1px solid var(--dsw-border, #d8d8de);
+  border-left: 1px solid var(--side-chat-border);
   border-radius: 0;
 }
 
 ::highlight(dsh-side-chat-annotations) {
-  background: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 18%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #1473e6) 18%, transparent);
 }
 ::highlight(dsh-side-chat-active-annotation) {
-  background: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 32%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #1473e6) 32%, transparent);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 70%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--dsw-alias-state-business-primary, #1473e6) 70%, transparent);
   text-decoration-thickness: 1px;
 }
 
@@ -909,9 +917,9 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: var(--dsw-alias-button-info, #1473e6);
+  background: var(--side-chat-accent-fill);
   box-shadow: 0 2px 6px rgb(0 0 0 / 14%);
-  color: #fff;
+  color: var(--side-chat-accent-text);
   font: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -922,10 +930,10 @@
 .dsh-side-chat-annotation-marker[data-large],
 .dsh-side-chat-selection-marker[data-large] { font-size: 9px; }
 .dsh-side-chat-annotation-marker[data-active] {
-  background: var(--dsw-alias-button-info-hover, #3467d6);
+  background: var(--side-chat-accent-hover);
 }
 .dsh-side-chat-annotation-marker:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--dsw-alias-button-info, #1473e6) 32%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--side-chat-accent) 32%, transparent);
   outline-offset: 1px;
 }
 
@@ -937,11 +945,11 @@
   box-sizing: border-box;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--dsw-border, #d8d8de);
+  border: 1px solid var(--side-chat-border);
   border-radius: 20px;
-  background: var(--dsw-surface, #fff);
+  background: var(--side-chat-bg);
   box-shadow: 0 5px 18px rgb(0 0 0 / 9%);
-  color: var(--dsw-text, #19191d);
+  color: var(--side-chat-text);
 }
 .dsh-side-chat-selection-comment textarea {
   width: 100%;
@@ -966,21 +974,21 @@
 .dsh-side-chat-selection-comment-actions button {
   min-height: 32px;
   padding: 0 14px;
-  border: 1px solid var(--dsw-border, #d8d8de);
+  border: 1px solid var(--side-chat-border);
   border-radius: 999px;
-  background: var(--dsw-surface, #fff);
+  background: var(--side-chat-bg);
   color: inherit;
   cursor: pointer;
   font: inherit;
 }
-.dsh-side-chat-selection-comment-actions button:hover { background: var(--dsw-surface-subtle, #f3f3f5); }
+.dsh-side-chat-selection-comment-actions button:hover { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5)); }
 .dsh-side-chat-selection-comment-actions .dsh-side-chat-selection-comment-save {
   border-color: transparent;
-  background: var(--dsw-alias-button-info, #1473e6);
-  color: #fff;
+  background: var(--side-chat-accent-fill);
+  color: var(--side-chat-accent-text);
 }
 .dsh-side-chat-selection-comment-actions .dsh-side-chat-selection-comment-save:hover {
-  background: var(--dsw-alias-button-info-hover, #3467d6);
+  background: var(--side-chat-accent-hover);
 }
 
 @media (max-width: 900px) {

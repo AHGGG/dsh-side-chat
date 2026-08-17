@@ -17,6 +17,20 @@ for (const path of [
   await access(new URL(path, import.meta.url))
 }
 
+const clientBundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+for (const themeContract of [
+  '--side-chat-bg: var(--dsw-alias-bg-layer-2',
+  '--side-chat-text: var(--dsw-alias-label-primary',
+  '--side-chat-accent-text: var(--dsw-alias-label-primary-foreground',
+]) {
+  if (!clientBundle.includes(themeContract)) {
+    throw new Error(`client bundle is missing theme contract: ${themeContract}`)
+  }
+}
+if (clientBundle.includes('--dsw-alias-button-info,')) {
+  throw new Error('client bundle references the unpublished --dsw-alias-button-info token')
+}
+
 await import(new URL('../lib/index.js', import.meta.url))
 await import(new URL('../lib/remote.js', import.meta.url))
 await import(new URL('../lib/typert.js', import.meta.url))
