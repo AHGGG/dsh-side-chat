@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.0...v0.6.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* complete dark theme token support ([49aa259](https://github.com/AHGGG/dsh-side-chat/commit/49aa2593cc1c958867b878ed422e14609b1b4f76))
+* use Harness theme aliases in dark mode ([392e8a6](https://github.com/AHGGG/dsh-side-chat/commit/392e8a6eb1cc0cb2edbca7c61833431083eb2b19))
+
 ## [0.6.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.5.0...v0.6.0) (2026-08-15)
 
 
