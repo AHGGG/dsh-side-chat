@@ -38,6 +38,8 @@ pnpm build
 
 ## Use Side Chat
 
+On phones and tablets, long-press text in a completed message to select it. The Side Chat action bar appears below the selection when there is room, leaving the browser's native selection bar above it. Use `Add to chat`, `More details`, or `Ask in side chat` directly from the touch action bar.
+
 1. Complete at least one turn in the main conversation.
 2. Select text inside one completed user or assistant message.
 3. Click `Add to chat` to add an optional comment before attaching the passage to the main composer, `More details` to send an explanation request immediately, or `Ask in side chat` to write a focused question.

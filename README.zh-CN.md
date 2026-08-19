@@ -38,6 +38,8 @@ pnpm build
 
 ## 使用 Side Chat
 
+在手机或平板上，可以长按已完成消息中的文字进行选中。有足够空间时，Side Chat 操作条会显示在选区下方，把浏览器系统选文菜单留在上方。你可以直接在触摸操作条中使用 `Add to chat`、`More details` 或 `Ask in side chat`。
+
 1. 在主会话中至少完成一轮对话。
 2. 在一条已完成的用户或助手消息内选中文字。
 3. 点击 `Add to chat` 可以先填写一条可选批注，再把引用加入主会话输入框；点击 `More details` 可以立即发送详细解释请求；点击 `Ask in side chat` 可以自己输入聚焦问题。
