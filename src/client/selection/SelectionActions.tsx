@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type {
+  CSSProperties,
+  FormEvent,
+  KeyboardEvent,
+  MouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import type { ConversationSelection } from '../../shared/contracts.js'
 
 export interface SelectionActionsProps {
   readonly selection: ConversationSelection
+  readonly touchInteraction?: boolean
   readonly askDisabledReason?: string
   readonly annotationNumber?: number
   /** Opens only the comment editor, used when an existing marker is clicked. */
@@ -22,8 +29,47 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(minimum, value), Math.max(minimum, maximum))
 }
 
+export function calculateSelectionActionsPosition(
+  rect: ConversationSelection['rect'],
+  size: { readonly width: number; readonly height: number },
+  touch: boolean,
+  viewport: { readonly width: number; readonly height: number } = {
+    width: rect.viewportWidth,
+    height: rect.viewportHeight,
+  },
+): { readonly left: number; readonly top: number } {
+  const edge = 8
+  const width = Math.max(0, size.width)
+  const height = Math.max(0, size.height)
+  const left = clamp(
+    rect.x + rect.width / 2 - width / 2,
+    edge,
+    viewport.width - width - edge,
+  )
+  const belowGap = touch ? 12 : 8
+  const aboveGap = touch ? 64 : 8
+  const below = rect.y + rect.height + belowGap
+  const above = rect.y - height - aboveGap
+  const belowFits = below + height <= viewport.height - edge
+  const aboveFits = above >= edge
+  let top: number
+  if (touch && belowFits) top = below
+  else if (aboveFits) top = above
+  else if (belowFits) top = below
+  else {
+    const roomAbove = rect.y - aboveGap - edge
+    const roomBelow = viewport.height - edge - rect.y - rect.height - belowGap
+    top = roomAbove >= roomBelow ? above : below
+  }
+  return {
+    left,
+    top: clamp(top, edge, viewport.height - height - edge),
+  }
+}
+
 export function SelectionActions({
   selection,
+  touchInteraction = false,
   askDisabledReason,
   annotationNumber = 1,
   annotationEditor,
@@ -35,14 +81,27 @@ export function SelectionActions({
 }: SelectionActionsProps) {
   const [editingAnnotation, setEditingAnnotation] = useState(annotationEditor !== undefined)
   const [comment, setComment] = useState(annotationEditor?.initialComment ?? '')
+  const [toolbarGeometry, setToolbarGeometry] = useState(() => ({
+    width: 0,
+    height: 0,
+    viewportWidth: selection.rect.viewportWidth,
+    viewportHeight: selection.rect.viewportHeight,
+  }))
   const commentRef = useRef<HTMLTextAreaElement>(null)
-  const center = selection.rect.x + selection.rect.width / 2
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const touchActivationRef = useRef<{
+    readonly target: HTMLButtonElement
+    readonly timeStamp: number
+  } | null>(null)
+  const toolbarPosition = calculateSelectionActionsPosition(
+    selection.rect,
+    toolbarGeometry,
+    touchInteraction,
+    { width: toolbarGeometry.viewportWidth, height: toolbarGeometry.viewportHeight },
+  )
   const style: CSSProperties = {
-    left: Math.min(Math.max(8, center), selection.rect.viewportWidth - 8),
-    top: selection.rect.y < 56
-      ? selection.rect.y + selection.rect.height + 8
-      : selection.rect.y - 8,
-    transform: selection.rect.y < 56 ? 'translate(0, 0)' : 'translate(0, -100%)',
+    left: toolbarPosition.left,
+    top: toolbarPosition.top,
   }
   const editorWidth = Math.min(420, selection.rect.viewportWidth - 16)
   const editorAbove = selection.rect.y - 118
@@ -67,6 +126,42 @@ export function SelectionActions({
   }
   const markerNumber = annotationNumber > 99 ? '99+' : String(annotationNumber)
   const keepSelection = (event: MouseEvent<HTMLDivElement>): void => { event.preventDefault() }
+
+  useLayoutEffect(() => {
+    if (editingAnnotation) return
+    const toolbar = toolbarRef.current
+    if (toolbar === null) return
+    const measure = (): void => {
+      const bounds = toolbar.getBoundingClientRect()
+      const visualViewport = window.visualViewport
+      const viewportWidth = visualViewport?.width ?? window.innerWidth ?? selection.rect.viewportWidth
+      const viewportHeight = visualViewport?.height ?? window.innerHeight ?? selection.rect.viewportHeight
+      const next = {
+        width: bounds.width,
+        height: bounds.height,
+        viewportWidth,
+        viewportHeight,
+      }
+      setToolbarGeometry(current => current.width === next.width
+        && current.height === next.height
+        && current.viewportWidth === next.viewportWidth
+        && current.viewportHeight === next.viewportHeight
+        ? current
+        : next)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(toolbar)
+    window.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('scroll', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('scroll', measure)
+    }
+  }, [editingAnnotation, selection, touchInteraction])
 
   useEffect(() => {
     if (editingAnnotation) commentRef.current?.focus()
@@ -99,6 +194,46 @@ export function SelectionActions({
       event.preventDefault()
       saveAnnotation()
     }
+  }
+  const openAnnotationEditor = (): void => {
+    setEditingAnnotation(true)
+    onAnnotationEditorChange?.(true)
+  }
+  const showMoreDetails = (): void => {
+    onMoreDetails(selection)
+    onDismiss()
+  }
+  const askInSideChat = (): void => {
+    onAskInSideChat(selection)
+    onDismiss()
+  }
+  const activateOnTouch = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    action: () => void,
+  ): void => {
+    if (!touchInteraction || event.pointerType !== 'touch' || event.currentTarget.disabled) return
+    event.preventDefault()
+    touchActivationRef.current = {
+      target: event.currentTarget,
+      timeStamp: event.timeStamp,
+    }
+    action()
+  }
+  const activateOnClick = (
+    event: MouseEvent<HTMLButtonElement>,
+    action: () => void,
+  ): void => {
+    const touchActivation = touchActivationRef.current
+    touchActivationRef.current = null
+    const elapsed = touchActivation === null ? Number.POSITIVE_INFINITY : event.timeStamp - touchActivation.timeStamp
+    if (event.detail !== 0
+      && touchActivation?.target === event.currentTarget
+      && elapsed >= 0
+      && elapsed < 1_000) {
+      event.preventDefault()
+      return
+    }
+    action()
   }
 
   if (editingAnnotation) {
@@ -141,21 +276,24 @@ export function SelectionActions({
 
   return (
     <div
+      ref={toolbarRef}
       className="dsh-side-chat-selection-actions"
       role="toolbar"
       aria-label="Selected conversation text actions"
+      data-touch={touchInteraction || undefined}
       style={style}
       onMouseDown={keepSelection}
+      onPointerDown={(event) => {
+        if (touchInteraction && event.pointerType === 'touch') event.preventDefault()
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onDismiss()
       }}
     >
       <button
         type="button"
-        onClick={() => {
-          setEditingAnnotation(true)
-          onAnnotationEditorChange?.(true)
-        }}
+        onPointerDown={(event) => { activateOnTouch(event, openAnnotationEditor) }}
+        onClick={(event) => { activateOnClick(event, openAnnotationEditor) }}
       >
         Add to chat
       </button>
@@ -163,10 +301,8 @@ export function SelectionActions({
         type="button"
         disabled={askDisabledReason !== undefined}
         title={askDisabledReason}
-        onClick={() => {
-          onMoreDetails(selection)
-          onDismiss()
-        }}
+        onPointerDown={(event) => { activateOnTouch(event, showMoreDetails) }}
+        onClick={(event) => { activateOnClick(event, showMoreDetails) }}
       >
         More details
       </button>
@@ -174,10 +310,8 @@ export function SelectionActions({
         type="button"
         disabled={askDisabledReason !== undefined}
         title={askDisabledReason}
-        onClick={() => {
-          onAskInSideChat(selection)
-          onDismiss()
-        }}
+        onPointerDown={(event) => { activateOnTouch(event, askInSideChat) }}
+        onClick={(event) => { activateOnClick(event, askInSideChat) }}
       >
         Ask in side chat
       </button>
