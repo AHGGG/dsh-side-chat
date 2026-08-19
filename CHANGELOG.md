@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.1...v0.6.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* support touch selection actions ([5a68065](https://github.com/AHGGG/dsh-side-chat/commit/5a6806513abe43920b385e5796f20d2fc628cd5e))
+* support touch selection actions on DSH rc.7 ([8f02ba3](https://github.com/AHGGG/dsh-side-chat/commit/8f02ba33fc1f12be03e7e68cbb29803783e1d7ab))
+
 ## [0.6.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.0...v0.6.1) (2026-08-17)
 
 
