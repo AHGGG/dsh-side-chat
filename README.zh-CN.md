@@ -2,7 +2,7 @@
 
 在不离开当前 DeepSeek Harness 主会话的情况下，针对选中的文本发起一个独立的侧边对话。
 
-> 兼容性：当前版本仅适配 `@deepseek-ai/dsh@0.1.0-rc.6`。
+> 兼容性：当前版本仅适配 `@deepseek-ai/dsh@0.1.0-rc.7`。
 
 [English](README.md)
 
@@ -10,10 +10,10 @@
 
 ## 安装
 
-如果尚未安装 DSH rc.6，先安装它。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
+如果尚未安装 DSH rc.7，先安装它。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.0-rc.6
+npm install --global @deepseek-ai/dsh@0.1.0-rc.7
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```

@@ -2,7 +2,7 @@
 
 Ask a focused follow-up about selected text without leaving your current DeepSeek Harness conversation.
 
-> Compatibility: this release targets `@deepseek-ai/dsh@0.1.0-rc.6` exactly.
+> Compatibility: this release targets `@deepseek-ai/dsh@0.1.0-rc.7` exactly.
 
 [简体中文](README.zh-CN.md)
 
@@ -10,10 +10,10 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 ## Install
 
-Install DSH rc.6 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
+Install DSH rc.7 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.0-rc.6
+npm install --global @deepseek-ai/dsh@0.1.0-rc.7
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
