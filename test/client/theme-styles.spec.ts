@@ -106,4 +106,8 @@ describe('Side Chat theme styles', () => {
     expect(sideChatCss).toMatch(/\.dsh-side-chat-selection-comment-save\s*\{[^}]*background:\s*var\(--side-chat-accent-fill\)[^}]*color:\s*var\(--side-chat-accent-text\)/s)
     expect(sideChatCss).not.toContain('--dsw-alias-button-info,')
   })
+
+  it('keeps touch selection actions slightly more compact than the initial mobile treatment', () => {
+    expect(sideChatCss).toMatch(/\.dsh-side-chat-selection-actions\[data-touch\] button\s*\{[^}]*min-height:\s*42px;[^}]*padding-inline:\s*14px;[^}]*white-space:\s*nowrap;/s)
+  })
 })

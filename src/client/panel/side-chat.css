@@ -865,7 +865,9 @@
   position: fixed;
   z-index: 90;
   display: flex;
+  width: max-content;
   max-width: calc(100vw - 16px);
+  box-sizing: border-box;
   flex-wrap: wrap;
   gap: 0;
   padding: 0;
@@ -892,6 +894,12 @@
 .dsh-side-chat-selection-actions button + button {
   border-left: 1px solid var(--side-chat-border);
   border-radius: 0;
+}
+.dsh-side-chat-selection-actions[data-touch] button {
+  min-height: 42px;
+  padding-inline: 14px;
+  touch-action: manipulation;
+  white-space: nowrap;
 }
 
 ::highlight(dsh-side-chat-annotations) {

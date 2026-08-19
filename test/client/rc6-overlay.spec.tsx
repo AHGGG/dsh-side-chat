@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SideChatClientSessions } from '../../src/client/contracts.js'
 import {
@@ -136,6 +136,86 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Ask in side chat' })).not.toBeInTheDocument()
     })
+  })
+
+  it('captures a touch selection after transient selectionchange timing settles', async () => {
+    vi.useFakeTimers()
+    try {
+      captureMocks.capture.mockResolvedValue(selectedPassage)
+      let browserSelection = { isCollapsed: true } as Selection
+      vi.spyOn(window, 'getSelection').mockImplementation(() => browserSelection)
+
+      const sessions = {
+        ...EMPTY_CONVERSATION_INPUT,
+        subscribeList: () => () => {},
+        currentSessionId: () => SessionId('parent-1'),
+        face: () => ({ getSnapshot: () => ({}) }),
+        nextConversationAnnotationNumber: () => 1,
+        notify: vi.fn(),
+      }
+      const controller = new SideChatController(
+        {} as SideChatRemote,
+        sessions as unknown as SideChatClientSessions,
+      )
+
+      render(<>
+        <div data-chat-flow />
+        <Rc6SideChatOverlay
+          controller={controller}
+          sessions={sessions as unknown as Rc6SideChatSessions}
+        />
+      </>)
+
+      fireEvent.touchStart(document.body)
+      fireEvent(document, new Event('selectionchange'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      browserSelection = { isCollapsed: false } as Selection
+      fireEvent(document, new Event('selectionchange'))
+      fireEvent.touchEnd(document.body)
+      fireEvent.mouseDown(document.body)
+      fireEvent.mouseUp(document.body)
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+
+      expect(captureMocks.capture).toHaveBeenCalledOnce()
+      expect(screen.getByRole('toolbar')).toHaveAttribute('data-touch', 'true')
+
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), {
+        pointerType: 'touch',
+      })
+      expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+      // The touchstart and compatibility mouse events can arrive after
+      // pointerdown has already replaced the toolbar with the editor.
+      fireEvent.touchStart(document.body)
+      fireEvent.touchEnd(document.body)
+      fireEvent.mouseDown(document.body)
+      fireEvent.mouseUp(document.body)
+      fireEvent(document, new Event('selectionchange'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+
+      expect(captureMocks.capture).toHaveBeenCalledOnce()
+      expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      const askButton = screen.getByRole('button', { name: 'Ask in side chat' })
+      fireEvent.pointerDown(askButton, { pointerType: 'touch' })
+      expect(screen.getByRole('complementary', { name: 'Side Chat' })).toBeInTheDocument()
+      // Some mobile engines retarget the rest of a touch sequence after the
+      // pointerdown handler replaces the toolbar. That sequence must not
+      // recapture the still-native browser selection.
+      fireEvent.touchStart(document.body)
+      fireEvent.touchEnd(document.body)
+      fireEvent.mouseDown(document.body)
+      fireEvent.mouseUp(document.body)
+      fireEvent(document, new Event('selectionchange'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+
+      expect(captureMocks.capture).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('button', { name: 'Ask in side chat' })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not restore a stale browser selection after clicking adjacent whitespace', async () => {
