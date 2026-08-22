@@ -7,10 +7,21 @@ const sideChatCss = readFileSync(
   new URL('../../src/client/panel/side-chat.css', import.meta.url),
   'utf8',
 )
-const harnessThemeCss = readFileSync(
-  require.resolve('@deepseek-ai/dsh-client-ui-theme/styles/design-platform.css'),
+const harnessThemeClient = readFileSync(
+  require.resolve('@deepseek-ai/dsh-client-ui-theme/client'),
   'utf8',
 )
+const embeddedThemeMatch = /design-platform\.css\.mjs\r?\n\s*var\s+\w+\s*=\s*("(?:\\.|[^"\\])*");/.exec(
+  harnessThemeClient,
+)
+if (embeddedThemeMatch?.[1] === undefined) {
+  throw new Error('Supported DSH theme bundle does not contain design-platform.css')
+}
+const parsedThemeCss: unknown = JSON.parse(embeddedThemeMatch[1])
+if (typeof parsedThemeCss !== 'string') {
+  throw new Error('Supported DSH theme bundle contains an invalid design-platform.css payload')
+}
+const harnessThemeCss = parsedThemeCss
 
 function themeValues(dark: boolean): Map<string, string> {
   const values = new Map<string, string>()
@@ -33,8 +44,24 @@ function resolveThemeValue(name: string, values: ReadonlyMap<string, string>, se
 }
 
 function rgb(value: string): readonly [number, number, number] {
-  const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number)
-  if (channels?.length !== 3) throw new Error(`Expected an RGB color, received: ${value}`)
+  const hex = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(value)?.[1]
+  if (hex !== undefined) {
+    const expanded = hex.length === 3
+      ? [...hex].map(channel => channel.repeat(2)).join('')
+      : hex
+    return [
+      Number.parseInt(expanded.slice(0, 2), 16),
+      Number.parseInt(expanded.slice(2, 4), 16),
+      Number.parseInt(expanded.slice(4, 6), 16),
+    ]
+  }
+  const channels = /^rgba?\(([^)]+)\)$/i.exec(value)?.[1]
+    ?.split(',')
+    .slice(0, 3)
+    .map(channel => Number(channel.trim()))
+  if (channels?.length !== 3 || channels.some(channel => !Number.isFinite(channel))) {
+    throw new Error(`Expected an RGB color, received: ${value}`)
+  }
   return [channels[0]!, channels[1]!, channels[2]!]
 }
 
