@@ -33,6 +33,7 @@ const NOOP = (): void => {}
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('selection action positioning', () => {
@@ -64,6 +65,63 @@ describe('selection action positioning', () => {
       { width: 300, height: 36 },
       false,
     )).toEqual({ left: 8, top: 56 })
+  })
+
+  it('uses visual viewport offsets when checking space and clamping edges', () => {
+    expect(calculateSelectionActionsPosition(
+      {
+        ...selectedPassage.rect,
+        x: 120,
+        y: 500,
+        viewportWidth: 800,
+        viewportHeight: 800,
+      },
+      { width: 300, height: 42 },
+      true,
+      { width: 500, height: 400, offsetLeft: 100, offsetTop: 200 },
+    )).toEqual({ left: 108, top: 532 })
+  })
+
+  it('passes live visual viewport offsets to the toolbar positioner', () => {
+    vi.stubGlobal('visualViewport', {
+      width: 500,
+      height: 400,
+      offsetLeft: 100,
+      offsetTop: 200,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 42,
+      top: 0,
+      right: 300,
+      bottom: 42,
+      left: 0,
+      toJSON: () => ({}),
+    })
+
+    render(<SelectionActions
+      selection={{
+        ...selectedPassage,
+        rect: {
+          ...selectedPassage.rect,
+          x: 120,
+          y: 500,
+          viewportWidth: 800,
+          viewportHeight: 800,
+        },
+      }}
+      touchInteraction
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={NOOP}
+    />)
+
+    expect(screen.getByRole('toolbar')).toHaveStyle({ left: '108px', top: '532px' })
   })
 })
 

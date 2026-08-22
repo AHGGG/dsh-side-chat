@@ -33,7 +33,12 @@ export function calculateSelectionActionsPosition(
   rect: ConversationSelection['rect'],
   size: { readonly width: number; readonly height: number },
   touch: boolean,
-  viewport: { readonly width: number; readonly height: number } = {
+  viewport: {
+    readonly width: number
+    readonly height: number
+    readonly offsetLeft?: number
+    readonly offsetTop?: number
+  } = {
     width: rect.viewportWidth,
     height: rect.viewportHeight,
   },
@@ -41,29 +46,35 @@ export function calculateSelectionActionsPosition(
   const edge = 8
   const width = Math.max(0, size.width)
   const height = Math.max(0, size.height)
+  // Range and fixed-position coordinates use the layout viewport origin. A
+  // visual viewport must therefore contribute both its size and its offset.
+  const viewportLeft = viewport.offsetLeft ?? 0
+  const viewportTop = viewport.offsetTop ?? 0
+  const viewportRight = viewportLeft + viewport.width
+  const viewportBottom = viewportTop + viewport.height
   const left = clamp(
     rect.x + rect.width / 2 - width / 2,
-    edge,
-    viewport.width - width - edge,
+    viewportLeft + edge,
+    viewportRight - width - edge,
   )
   const belowGap = touch ? 12 : 8
   const aboveGap = touch ? 64 : 8
   const below = rect.y + rect.height + belowGap
   const above = rect.y - height - aboveGap
-  const belowFits = below + height <= viewport.height - edge
-  const aboveFits = above >= edge
+  const belowFits = below + height <= viewportBottom - edge
+  const aboveFits = above >= viewportTop + edge
   let top: number
   if (touch && belowFits) top = below
   else if (aboveFits) top = above
   else if (belowFits) top = below
   else {
-    const roomAbove = rect.y - aboveGap - edge
-    const roomBelow = viewport.height - edge - rect.y - rect.height - belowGap
+    const roomAbove = rect.y - aboveGap - viewportTop - edge
+    const roomBelow = viewportBottom - edge - rect.y - rect.height - belowGap
     top = roomAbove >= roomBelow ? above : below
   }
   return {
     left,
-    top: clamp(top, edge, viewport.height - height - edge),
+    top: clamp(top, viewportTop + edge, viewportBottom - height - edge),
   }
 }
 
@@ -86,6 +97,8 @@ export function SelectionActions({
     height: 0,
     viewportWidth: selection.rect.viewportWidth,
     viewportHeight: selection.rect.viewportHeight,
+    viewportOffsetLeft: 0,
+    viewportOffsetTop: 0,
   }))
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -97,7 +110,12 @@ export function SelectionActions({
     selection.rect,
     toolbarGeometry,
     touchInteraction,
-    { width: toolbarGeometry.viewportWidth, height: toolbarGeometry.viewportHeight },
+    {
+      width: toolbarGeometry.viewportWidth,
+      height: toolbarGeometry.viewportHeight,
+      offsetLeft: toolbarGeometry.viewportOffsetLeft,
+      offsetTop: toolbarGeometry.viewportOffsetTop,
+    },
   )
   const style: CSSProperties = {
     left: toolbarPosition.left,
@@ -141,11 +159,15 @@ export function SelectionActions({
         height: bounds.height,
         viewportWidth,
         viewportHeight,
+        viewportOffsetLeft: visualViewport?.offsetLeft ?? 0,
+        viewportOffsetTop: visualViewport?.offsetTop ?? 0,
       }
       setToolbarGeometry(current => current.width === next.width
         && current.height === next.height
         && current.viewportWidth === next.viewportWidth
         && current.viewportHeight === next.viewportHeight
+        && current.viewportOffsetLeft === next.viewportOffsetLeft
+        && current.viewportOffsetTop === next.viewportOffsetTop
         ? current
         : next)
     }
