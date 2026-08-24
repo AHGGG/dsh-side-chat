@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![先在 Side Chat 中询问选中文本，再把带批注的选区加入主会话](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![先在 Side Chat 中询问选中文本，再将 Side Chat 对话添加到主会话](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## 安装
 
@@ -44,7 +44,8 @@ pnpm build
 2. 在一条已完成的用户或助手消息内选中文字。
 3. 点击 `Add to chat` 可以先填写一条可选批注，再把引用加入主会话输入框；点击 `More details` 可以立即发送详细解释请求；点击 `Ask in side chat` 可以自己输入聚焦问题。
 4. 自己输入消息或问题时，按 `Enter` 发送。
-5. 完成后按 `Esc`，或者点击 `×` 关闭。
+5. Side Chat 回复完成后，点击 `Add to conversation`，即可把这段聚焦讨论作为一个会话引用加入主会话输入框。
+6. 完成后按 `Esc`，或者点击 `×` 关闭。
 
 常用操作：
 
@@ -52,6 +53,7 @@ pnpm build
 - 使用发送按钮旁的模型控件可以选择 provider/model 及其可用的推理等级；该选择只属于 Side Chat，不会修改主会话，并会成为下次打开 Side Chat 时使用的全局默认值。
 - 点击 `Add to chat` 后，按 `Enter` 或点击 `Save` 保存 annotation；点击批注框外部或点击 `Cancel` 则直接取消。
 - `Add to chat` 会保留输入框中已有的草稿，并可把多段带序号的文本及各自的可选批注汇总到同一个 annotation 胶囊中。
+- `Add to conversation` 会捕获 Side Chat 中的用户/助手历史、保留主会话草稿；再次点击时会刷新已有引用，而不是重复添加。
 - 输入框会随内容自动增高，达到最大高度后在内部滚动。
 - 回复生成期间，发送图标会替换为停止按钮。
 - Assistant 回复使用 DSH 原生 Markdown 渲染。
