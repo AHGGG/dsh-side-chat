@@ -30,6 +30,8 @@ export interface ParentComposerOccurrence {
   readonly source: string
   readonly ref: string
   readonly offset: number
+  /** Present in newer DSH input snapshots; older rc.6 fixtures omit it. */
+  readonly length?: number
 }
 
 export interface ParentComposerInputSnapshot {
@@ -49,6 +51,7 @@ export interface ParentComposerInput {
       readonly source: string
       readonly ref: string
       readonly label: string
+      readonly appearance?: 'session' | 'file' | 'folder'
       readonly clipboardText: string
     },
     span: { readonly start: number; readonly end: number; readonly draftRev: number },

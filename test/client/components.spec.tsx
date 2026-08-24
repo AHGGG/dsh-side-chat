@@ -8,6 +8,10 @@ import {
   annotatedUserMessageRenderer,
   mountParentConversationAnnotations,
 } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
+import {
+  serializeReferencedConversation,
+  type ReferencedSideChatConversation,
+} from '../../src/client/parent-composer/referenced-conversation.js'
 import { ArchivedConversation } from '../../src/client/rc6/ArchivedConversation.js'
 import { SelectionActions } from '../../src/client/selection/SelectionActions.js'
 import type { SideChatController } from '../../src/client/side-chat-controller.js'
@@ -143,6 +147,45 @@ describe('Side Chat components', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Side Chat' }))
     await waitFor(() => { expect(close).toHaveBeenCalledOnce() })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows the add-to-conversation action in the modal header', () => {
+    const add = vi.fn()
+    const state: SideChatState = {
+      ...draftState,
+      phase: 'ready',
+      childSessionId: SessionId('child-1'),
+      inheritedThroughSeq: 7,
+    }
+    const { rerender } = render(<SideChatPanel
+      state={state}
+      embeddedConversation={<div>Child transcript</div>}
+      onDraftChange={() => {}}
+      onFirstSend={async () => ({ ok: true, value: undefined })}
+      onClose={async () => ({ ok: true, value: undefined })}
+      onRetry={async () => ({ ok: true, value: undefined })}
+      onFocusParent={() => {}}
+      onAddToConversation={add}
+    />)
+
+    const button = screen.getByRole('button', { name: 'Add to conversation' })
+    expect(button.closest('header')).toHaveClass('dsh-side-chat-header')
+    expect(button.querySelector('svg')).toHaveClass('dsh-side-chat-add-to-conversation-icon')
+    fireEvent.click(button)
+    expect(add).toHaveBeenCalledOnce()
+
+    rerender(<SideChatPanel
+      state={{ ...state, phase: 'running' }}
+      embeddedConversation={<div>Child transcript</div>}
+      onDraftChange={() => {}}
+      onFirstSend={async () => ({ ok: true, value: undefined })}
+      onClose={async () => ({ ok: true, value: undefined })}
+      onRetry={async () => ({ ok: true, value: undefined })}
+      onFocusParent={() => {}}
+      onAddToConversation={add}
+      addToConversationDisabled
+    />)
+    expect(screen.getByRole('button', { name: 'Add to conversation' })).toBeDisabled()
   })
 
   it('sends the first question with Enter and preserves Shift+Enter for a newline', async () => {
@@ -309,6 +352,52 @@ describe('Side Chat components', () => {
     expect(quote).not.toHaveAttribute('data-hovered')
     expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove annotation' })).not.toBeInTheDocument()
+  })
+
+  it('projects a sent referenced conversation as one native session label', () => {
+    const reference: ReferencedSideChatConversation = {
+      version: 1,
+      conversationId: SessionId('child-1'),
+      title: 'Side Chat · Project',
+      conversation: [
+        { role: 'user', content: 'Why?' },
+        { role: 'assistant', content: 'Because this is the result.' },
+      ],
+    }
+    const NativeUserMessage = ({ node }: {
+      readonly node: {
+        readonly data: {
+          readonly content: readonly unknown[]
+          readonly referenceLabels?: readonly string[]
+        }
+      }
+    }) => (
+      <div
+        data-testid="native-referenced-message"
+        data-reference-labels={JSON.stringify(node.data.referenceLabels ?? [])}
+      >
+        {node.data.content.map(block => (
+          typeof block === 'object' && block !== null && 'text' in block
+            ? String((block as { readonly text: unknown }).text)
+            : ''
+        )).join('')}
+      </div>
+    )
+    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
+    render(<Renderer node={{
+      data: {
+        content: [{
+          type: 'text',
+          text: `${serializeReferencedConversation(reference)}\n\nContinue from this discussion.`,
+        }],
+      },
+    }} />)
+
+    const message = screen.getByTestId('native-referenced-message')
+    expect(message).toHaveTextContent('@Side Chat · Project Continue from this discussion.')
+    expect(message).toHaveAttribute('data-reference-labels', '["Side Chat · Project"]')
+    expect(message).not.toHaveTextContent('referenced_conversation')
+    expect(message).not.toHaveTextContent('Because this is the result.')
   })
 
   it('keeps a recoverable close error visible with one retry', () => {

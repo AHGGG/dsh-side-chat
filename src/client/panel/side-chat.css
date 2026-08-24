@@ -597,7 +597,43 @@
   background: transparent;
   text-align: left;
 }
-.dsh-side-chat-header > button:last-child {
+.dsh-side-chat-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.dsh-side-chat-header .dsh-side-chat-add-to-conversation {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, var(--side-chat-muted));
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dsh-side-chat-add-to-conversation:hover:not(:disabled),
+.dsh-side-chat-add-to-conversation:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5));
+  color: var(--side-chat-text);
+}
+.dsh-side-chat-add-to-conversation-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+.dsh-side-chat-header .dsh-side-chat-close {
   width: 32px;
   min-height: 32px;
   padding: 0;
@@ -607,7 +643,7 @@
   font-size: 20px;
   line-height: 1;
 }
-.dsh-side-chat-header > button:last-child:hover { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5)); }
+.dsh-side-chat-close:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-surface-subtle, #f3f3f5)); }
 
 .dsh-side-chat-quote { position: relative; max-width: 100%; align-self: flex-start; }
 .dsh-side-chat-quote-chip {

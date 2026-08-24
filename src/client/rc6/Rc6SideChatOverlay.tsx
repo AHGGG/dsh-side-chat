@@ -11,6 +11,7 @@ import {
   conversationSelectionAnnotations,
   type ConversationSelectionAnnotation,
 } from '../parent-composer/add-to-conversation.js'
+import { referencedSideChatConversation } from '../parent-composer/referenced-conversation.js'
 import type { SideChatController } from '../side-chat-controller.js'
 import { SideChatModelSelect } from '../panel/SideChatModelSelect.js'
 import { SideChatPanel } from '../panel/SideChatPanel.js'
@@ -284,6 +285,44 @@ export function Rc6SideChatOverlay({
   const modelDirectory = state.parentSessionId === undefined
     ? undefined
     : sessions.modelDirectory?.(state.parentSessionId)
+  const addToConversationDisabled = childFace === undefined
+    || inheritedThroughSeq === undefined
+    || state.parentSessionId === undefined
+    || state.childSessionId === undefined
+    || state.phase !== 'ready'
+  const addToConversation = (): void => {
+    const parentSessionId = state.parentSessionId
+    const childSessionId = state.childSessionId
+    const face = childSessionId === undefined ? undefined : sessions.face(childSessionId)
+    if (parentSessionId === undefined
+      || childSessionId === undefined
+      || inheritedThroughSeq === undefined
+      || face === undefined) {
+      sessions.notify({ kind: 'warning', text: 'The Side Chat conversation is not ready to add yet.' })
+      return
+    }
+    const reference = referencedSideChatConversation({
+      conversationId: childSessionId,
+      title: sessions.title(childSessionId) ?? (locale === 'zh-CN' ? '侧边对话' : 'Side Chat'),
+      nodes: face.getSnapshot().nodes,
+      inheritedThroughSeq,
+    })
+    if (reference.conversation.length === 0) {
+      sessions.notify({ kind: 'warning', text: 'The Side Chat does not have any conversation history to add yet.' })
+      return
+    }
+    try {
+      if (!sessions.addSideChatToConversation(parentSessionId, reference)) {
+        sessions.notify({ kind: 'warning', text: 'Could not add the Side Chat to the main conversation.' })
+        return
+      }
+      void sessions.openSession(parentSessionId).then(focusParentComposer, () => {
+        sessions.notify({ kind: 'warning', text: 'The Side Chat was added, but its parent conversation could not be opened.' })
+      })
+    } catch {
+      sessions.notify({ kind: 'warning', text: 'Could not add the Side Chat to the main conversation.' })
+    }
+  }
   const modelControl = modelDirectory === undefined
     ? undefined
     : (
@@ -410,6 +449,8 @@ export function Rc6SideChatOverlay({
           onFocusParent={() => {
             if (state.parentSessionId !== undefined) void sessions.openSession(state.parentSessionId)
           }}
+          onAddToConversation={addToConversation}
+          addToConversationDisabled={addToConversationDisabled}
           onRemoveSelection={() => { controller.clearSelection() }}
         />
       )}

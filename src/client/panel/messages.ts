@@ -1,6 +1,7 @@
 export interface SideChatMessages {
   readonly title: string
   readonly close: string
+  readonly addToConversation: string
   readonly placeholder: string
   readonly send: string
   readonly selectedPassage: string
@@ -23,6 +24,7 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
   en: Object.freeze({
     title: 'Side Chat',
     close: 'Close Side Chat',
+    addToConversation: 'Add to conversation',
     placeholder: 'Ask about this in a Side Chat',
     send: 'Send',
     selectedPassage: 'Selected passage',
@@ -43,6 +45,7 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
   'zh-CN': Object.freeze({
     title: '侧边对话',
     close: '关闭侧边对话',
+    addToConversation: '添加到主对话',
     placeholder: '在侧边对话中询问这段内容',
     send: '发送',
     selectedPassage: '所选段落',

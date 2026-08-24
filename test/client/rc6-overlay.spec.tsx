@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ConversationSnapshot, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SideChatClientSessions } from '../../src/client/contracts.js'
 import {
   addSelectionToConversation,
@@ -295,6 +296,96 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     expect(screen.queryByRole('complementary', { name: 'Side Chat' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add to chat' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveFocus()
+  })
+
+  it('adds the settled Side Chat history to the parent composer from the header', async () => {
+    const state = {
+      phase: 'ready' as const,
+      parentSessionId: SessionId('parent-1'),
+      childSessionId: SessionId('child-1'),
+      boundarySeq: 7,
+      inheritedThroughSeq: 7,
+      draft: '',
+    }
+    const controller = {
+      subscribe: () => () => {},
+      getSnapshot: () => state,
+      setDraft: vi.fn(),
+      sendFirst: vi.fn(),
+      close: vi.fn(),
+      retry: vi.fn(),
+      clearSelection: vi.fn(),
+    } as unknown as SideChatController
+    const snapshot = {
+      nodes: [{
+        kind: 'user',
+        seq: 7,
+        content: [{ type: 'text', text: 'Inherited parent history' }],
+      }, {
+        kind: 'user',
+        seq: 8,
+        content: [{ type: 'text', text: '<user_question>Compare the options.</user_question>' }],
+      }, {
+        kind: 'assistant',
+        seq: 9,
+        blocks: [{ kind: 'text', text: 'Use the second option.' }],
+        interrupted: false,
+      }],
+      openState: 'open',
+      partial: null,
+      pending: [],
+      queue: [],
+      runningCalls: [],
+      running: false,
+      promptError: null,
+    } as unknown as ConversationSnapshot
+    const face = {
+      subscribe: () => () => {},
+      getSnapshot: () => snapshot,
+    } as unknown as SessionFace
+    const addSideChatToConversation = vi.fn(() => true)
+    const openSession = vi.fn(async () => {})
+    const sessions = {
+      ...EMPTY_CONVERSATION_INPUT,
+      subscribeList: () => () => {},
+      currentSessionId: () => SessionId('parent-1'),
+      face: (sessionId: string) => sessionId === 'child-1' ? face : undefined,
+      cwd: () => undefined,
+      title: () => 'Side Chat · Architecture',
+      addSideChatToConversation,
+      openSession,
+      notify: vi.fn(),
+    }
+
+    render(<>
+      <div data-composer-seat><textarea /></div>
+      <Rc6SideChatOverlay
+        controller={controller}
+        sessions={sessions as unknown as Rc6SideChatSessions}
+      />
+    </>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to conversation' }))
+
+    expect(addSideChatToConversation).toHaveBeenCalledWith(
+      SessionId('parent-1'),
+      {
+        version: 1,
+        conversationId: 'child-1',
+        title: 'Side Chat · Architecture',
+        conversation: [{
+          role: 'user',
+          content: '<user_question>Compare the options.</user_question>',
+        }, {
+          role: 'assistant',
+          content: 'Use the second option.',
+        }],
+      },
+    )
+    await waitFor(() => {
+      expect(openSession).toHaveBeenCalledWith(SessionId('parent-1'))
+      expect(document.querySelector('[data-composer-seat] textarea')).toHaveFocus()
+    })
   })
 
   it('keeps an added annotation marker interactive and edits its comment in place', async () => {

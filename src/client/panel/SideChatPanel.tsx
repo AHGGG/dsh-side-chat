@@ -19,6 +19,8 @@ export interface SideChatPanelProps {
   readonly onClose: () => Promise<SideChatActionResult<void>>
   readonly onRetry: () => Promise<SideChatActionResult<unknown>>
   readonly onFocusParent: () => void
+  readonly onAddToConversation?: () => void
+  readonly addToConversationDisabled?: boolean
   readonly onRemoveSelection?: () => void
 }
 
@@ -32,6 +34,8 @@ export function SideChatPanel({
   onClose,
   onRetry,
   onFocusParent,
+  onAddToConversation,
+  addToConversationDisabled,
   onRemoveSelection,
 }: SideChatPanelProps) {
   const messages = SIDE_CHAT_MESSAGES[locale]
@@ -58,6 +62,8 @@ export function SideChatPanel({
       <SideChatHeader
         phase={state.phase}
         messages={messages}
+        {...onAddToConversation === undefined ? {} : { onAddToConversation }}
+        {...addToConversationDisabled === undefined ? {} : { addToConversationDisabled }}
         onFocusParent={onFocusParent}
         onClose={() => { void onClose() }}
       />
