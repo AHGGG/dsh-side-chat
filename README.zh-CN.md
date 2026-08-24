@@ -2,8 +2,6 @@
 
 在不离开当前 DeepSeek Harness 主会话的情况下，针对选中的文本发起一个独立的侧边对话。
 
-> 兼容性：当前版本仅适配 `@deepseek-ai/dsh@0.1.0-rc.7`。
-
 [English](README.md)
 
 ![先在 Side Chat 中询问选中文本，再将 Side Chat 对话添加到主会话](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)

@@ -2,8 +2,6 @@
 
 Ask a focused follow-up about selected text without leaving your current DeepSeek Harness conversation.
 
-> Compatibility: this release targets `@deepseek-ai/dsh@0.1.0-rc.7` exactly.
-
 [简体中文](README.zh-CN.md)
 
 ![Ask about selected text in Side Chat, then add the Side Chat conversation to the main chat](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)

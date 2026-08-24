@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'dsh-side-chat-clean-profile-'))
 const artifacts = join(temporaryRoot, 'artifacts')
-const profile = join(temporaryRoot, 'profile')
+const dshPackagePrefix = '@deepseek-ai/dsh-'
 const npmCommand = process.platform === 'win32'
   ? { file: process.env.ComSpec ?? 'cmd.exe', prefix: ['/d', '/s', '/c', 'npm'] }
   : { file: 'npm', prefix: [] }
@@ -18,7 +18,6 @@ function runNpm(arguments_, options) {
 
 try {
   await mkdir(artifacts)
-  await mkdir(profile)
   const packed = runNpm([
     'pack',
     root,
@@ -33,35 +32,46 @@ try {
   const tarball = join(artifacts, manifest.filename)
   const packageName = manifest.name
   const sourceManifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const supportedDshVersion = sourceManifest.peerDependencies?.['@deepseek-ai/dsh-agent']
-  if (typeof supportedDshVersion !== 'string' || supportedDshVersion.length === 0) {
-    throw new Error('package manifest does not declare a supported DSH version')
-  }
-  const lockfile = await readFile(join(root, 'pnpm-lock.yaml'), 'utf8')
-  const dshPackageOverrides = Object.fromEntries(
-    [...lockfile.matchAll(/^  '(@deepseek-ai\/dsh-[^@']+)@([^']+)':$/gm)]
-      .filter(([, , version]) => version === supportedDshVersion)
-      .map(([, name]) => [name, supportedDshVersion]),
-  )
-  if (Object.keys(dshPackageOverrides).length === 0) {
-    throw new Error(`workspace lockfile does not contain DSH ${supportedDshVersion}`)
+  const declaredVersions = sourceManifest.dshCompatibility?.testedVersions
+  if (!Array.isArray(declaredVersions)
+    || declaredVersions.length === 0
+    || declaredVersions.some(version => typeof version !== 'string' || version.length === 0)
+    || new Set(declaredVersions).size !== declaredVersions.length) {
+    throw new Error('package manifest must declare unique dshCompatibility.testedVersions')
   }
 
-  await writeFile(join(profile, 'package.json'), JSON.stringify({
-    name: 'dsh-side-chat-clean-profile',
-    private: true,
-    type: 'module',
-    // Keep npm from mixing a newer DSH prerelease into the supported release train.
-    overrides: dshPackageOverrides,
-  }, null, 2))
-  runNpm([
-    'install',
-    '--ignore-scripts',
-    '--no-audit',
-    '--no-fund',
-    tarball,
-    'react@18.3.1',
-  ], { cwd: profile, stdio: 'inherit' })
+  const supportedRange = declaredVersions.join(' || ')
+  const dshPeers = Object.entries(sourceManifest.peerDependencies ?? {})
+    .filter(([name]) => name.startsWith(dshPackagePrefix))
+  if (dshPeers.length === 0) throw new Error('package manifest does not declare DSH peer dependencies')
+  for (const [name, range] of dshPeers) {
+    if (range !== supportedRange) {
+      throw new Error(`${name} peer range must match tested DSH versions: ${supportedRange}`)
+    }
+  }
+
+  const newestVersion = declaredVersions.at(-1)
+  const dshDevDependencies = Object.entries(sourceManifest.devDependencies ?? {})
+    .filter(([name]) => name.startsWith(dshPackagePrefix))
+  if (dshDevDependencies.length === 0) throw new Error('package manifest does not declare DSH development dependencies')
+  for (const [name, version] of dshDevDependencies) {
+    if (version !== newestVersion) {
+      throw new Error(`${name} development dependency must use newest tested DSH version: ${newestVersion}`)
+    }
+  }
+
+  const requestedVersion = process.env.DSH_TEST_VERSION
+  if (requestedVersion !== undefined && !declaredVersions.includes(requestedVersion)) {
+    throw new Error(`DSH_TEST_VERSION is not declared as tested: ${requestedVersion}`)
+  }
+  const versionsToTest = requestedVersion === undefined ? declaredVersions : [requestedVersion]
+
+  const lockfile = await readFile(join(root, 'pnpm-lock.yaml'), 'utf8')
+  const dshPackageNames = [...new Set(
+    [...lockfile.matchAll(/^  '(@deepseek-ai\/dsh-[^@']+)@[^']+':$/gm)]
+      .map(([, name]) => name),
+  )]
+  if (dshPackageNames.length === 0) throw new Error('workspace lockfile does not contain DSH packages')
 
   const probe = [
     `await import(${JSON.stringify(packageName)})`,
@@ -76,11 +86,31 @@ try {
     "const client = handoff.factory(specifier => { if (!modules.has(specifier)) throw new Error('unexpected external ' + specifier); return modules.get(specifier) })",
     "if (typeof client?.apply !== 'function' || !Array.isArray(client.inject)) throw new Error('invalid client plugin surface')",
   ].join('; ')
-  execFileSync(process.execPath, ['--input-type=module', '--eval', probe], {
-    cwd: profile,
-    stdio: 'inherit',
-  })
-  process.stdout.write(`Clean-profile package imports passed: ${manifest.filename}\n`)
+
+  for (const dshVersion of versionsToTest) {
+    const profile = join(temporaryRoot, `profile-${dshVersion.replaceAll(/[^a-zA-Z0-9.-]/g, '-')}`)
+    await mkdir(profile)
+    await writeFile(join(profile, 'package.json'), JSON.stringify({
+      name: 'dsh-side-chat-clean-profile',
+      private: true,
+      type: 'module',
+      // Keep npm from mixing DSH prereleases from different validated release trains.
+      overrides: Object.fromEntries(dshPackageNames.map(name => [name, dshVersion])),
+    }, null, 2))
+    runNpm([
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      tarball,
+      'react@18.3.1',
+    ], { cwd: profile, stdio: 'inherit' })
+    execFileSync(process.execPath, ['--input-type=module', '--eval', probe], {
+      cwd: profile,
+      stdio: 'inherit',
+    })
+    process.stdout.write(`Clean-profile package imports passed for DSH ${dshVersion}: ${manifest.filename}\n`)
+  }
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })
 }
