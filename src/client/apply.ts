@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import sideChatCss from './panel/side-chat.css'
 import { selectionReferenceSource } from './parent-composer/add-to-conversation.js'
 import { mountParentConversationAnnotations } from './parent-composer/ParentConversationAnnotations.js'
+import { sideChatConversationReferenceSource } from './parent-composer/referenced-conversation.js'
 import { SideChatController } from './side-chat-controller.js'
 import { mountArchivedRemote } from './rc6/remote-adapter.js'
 import { Rc6SideChatOverlay } from './rc6/Rc6SideChatOverlay.js'
@@ -25,6 +26,7 @@ export async function apply(ctx: Context): Promise<void> {
   const clientCtx = ctx as unknown as Rc6ClientContext
   const mounted = await mountArchivedRemote(clientCtx)
   const removeSelectionReferenceSource = clientCtx.inputTriggers.registerSource(selectionReferenceSource)
+  const removeConversationReferenceSource = clientCtx.inputTriggers.registerSource(sideChatConversationReferenceSource)
   const sessions = new Rc6SideChatSessions(clientCtx)
   const removeParentAnnotations = mountParentConversationAnnotations(
     clientCtx,
@@ -42,6 +44,7 @@ export async function apply(ctx: Context): Promise<void> {
       await controller.dispose()
     } finally {
       removeParentAnnotations()
+      removeConversationReferenceSource()
       removeSelectionReferenceSource()
       removeOverlay()
       await mounted.dispose()

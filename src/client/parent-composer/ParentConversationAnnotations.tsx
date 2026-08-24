@@ -5,13 +5,22 @@ import { SelectionQuote } from '../panel/SelectionQuote.js'
 import {
   conversationAnnotations,
   parseAnnotatedConversationPrompt,
+  type ConversationAnnotation,
   type ParentComposerInputSnapshot,
 } from './add-to-conversation.js'
+import {
+  parseReferencedConversationPrompt,
+  type ReferencedSideChatConversation,
+} from './referenced-conversation.js'
 
 type Locale = keyof typeof SIDE_CHAT_MESSAGES
 interface UserNodeProps {
   readonly node: {
-    readonly data: { readonly content: readonly unknown[] }
+    readonly data: {
+      readonly content: readonly unknown[]
+      readonly referenceLabels?: readonly string[]
+      readonly [key: string]: unknown
+    }
     readonly [key: string]: unknown
   }
   readonly [key: string]: unknown
@@ -90,18 +99,61 @@ function replaceTextContent(content: readonly unknown[], message: string): reado
   return replaced ? next : [{ type: 'text', text: message }, ...next]
 }
 
+interface ParsedPluginPrompt {
+  readonly annotations?: readonly ConversationAnnotation[]
+  readonly reference?: ReferencedSideChatConversation
+  readonly message: string
+}
+
+function parsePluginPrompt(text: string): ParsedPluginPrompt | undefined {
+  let message = text
+  let annotations: readonly ConversationAnnotation[] | undefined
+  let reference: ReferencedSideChatConversation | undefined
+  for (let index = 0; index < 2; index += 1) {
+    const annotated = annotations === undefined ? parseAnnotatedConversationPrompt(message) : undefined
+    if (annotated !== undefined) {
+      annotations = annotated.annotations
+      message = annotated.message
+      continue
+    }
+    const referenced = reference === undefined ? parseReferencedConversationPrompt(message) : undefined
+    if (referenced !== undefined) {
+      reference = referenced.reference
+      message = referenced.message
+      continue
+    }
+    break
+  }
+  if (annotations === undefined && reference === undefined) return
+  return {
+    ...(annotations === undefined ? {} : { annotations }),
+    ...(reference === undefined ? {} : { reference }),
+    message,
+  }
+}
+
 /** Wrap DSH's own user renderer only when this plugin's durable prefix exists. */
 export function annotatedUserMessageRenderer(Original: UserNodeRenderer): (props: UserNodeProps) => ReactNode {
   return function AnnotatedUserMessageRenderer(props: UserNodeProps): ReactNode {
-    const parsed = parseAnnotatedConversationPrompt(contentText(props.node.data.content))
+    const parsed = parsePluginPrompt(contentText(props.node.data.content))
     if (parsed === undefined) return createElement(Original, props)
+    const body = visibleMessage(parsed.message)
+    const visible = parsed.reference === undefined
+      ? body
+      : [`@${parsed.reference.title}`, body].filter(part => part.length > 0).join('\n\n')
+    const existingLabels = props.node.data.referenceLabels ?? []
     const node = {
       ...props.node,
       data: {
         ...props.node.data,
-        content: replaceTextContent(props.node.data.content, visibleMessage(parsed.message)),
+        content: replaceTextContent(props.node.data.content, visible),
+        ...(parsed.reference === undefined
+          ? {}
+          : { referenceLabels: [...new Set([parsed.reference.title, ...existingLabels])] }),
       },
     } as UserNodeProps['node']
+    const original = createElement(Original, { ...props, node })
+    if (parsed.annotations === undefined) return original
     return (
       <div className="dsh-side-chat-parent-user-message">
         <SelectionQuote
@@ -109,7 +161,7 @@ export function annotatedUserMessageRenderer(Original: UserNodeRenderer): (props
           messages={SIDE_CHAT_MESSAGES[currentLocale()]}
         />
         <div className="dsh-side-chat-parent-user-message-body">
-          {createElement(Original, { ...props, node })}
+          {original}
         </div>
       </div>
     )

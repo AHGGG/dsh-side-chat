@@ -40,6 +40,10 @@ import type {
   ParentComposerInputSnapshot,
 } from '../parent-composer/add-to-conversation.js'
 import { ConversationAnnotationPersistence } from '../parent-composer/annotation-persistence.js'
+import {
+  addReferencedSideChatToConversation as addReferencedSideChatToParentComposer,
+  type ReferencedSideChatConversation,
+} from '../parent-composer/referenced-conversation.js'
 import { SideChatModelPreferences } from '../model-preference.js'
 import type { Rc6ClientContext } from './context.js'
 
@@ -264,6 +268,18 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     const input = this.currentParentInput()
     if (input === undefined || !addSelectionToParentComposer(input, selection, comment)) return false
     this.annotationPersistence.reconcile(selection.parentSessionId, input)
+    return true
+  }
+
+  /** Add one immutable Side Chat transcript to its parent Session's composer. */
+  addSideChatToConversation(
+    parentSessionId: SessionId,
+    reference: ReferencedSideChatConversation,
+  ): boolean {
+    const scope = this.ctx.sessions.scope(dshSessionId(parentSessionId))
+    const input = scope === undefined ? undefined : this.ctx.conversation.input.for(scope)
+    if (input === undefined || !addReferencedSideChatToParentComposer(input, reference)) return false
+    this.annotationPersistence.reconcile(parentSessionId, input)
     return true
   }
 
