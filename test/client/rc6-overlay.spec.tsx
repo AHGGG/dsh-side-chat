@@ -7,10 +7,11 @@ import type { SideChatClientSessions } from '../../src/client/contracts.js'
 import {
   addSelectionToConversation,
   conversationAnnotations,
+  removeConversationAnnotation,
   updateConversationAnnotation,
-  type ParentComposerInput,
 } from '../../src/client/parent-composer/add-to-conversation.js'
 import { Rc6SideChatOverlay } from '../../src/client/rc6/Rc6SideChatOverlay.js'
+import { composerReferenceFixture } from './composer-reference-fixture.js'
 import type { Rc6SideChatSessions } from '../../src/client/rc6/sessions-adapter.js'
 import { SideChatController } from '../../src/client/side-chat-controller.js'
 import type { ConversationSelection, SideChatRemote } from '../../src/shared/contracts.js'
@@ -47,52 +48,14 @@ const selectedPassage: ConversationSelection = {
 const EMPTY_CONVERSATION_INPUT = {
   subscribeConversationInput: () => () => {},
   currentConversationInputSnapshot: () => undefined,
+  removeConversationAnnotation: () => false,
   updateConversationAnnotation: () => false,
   sideChatModelPreference: () => undefined,
   rememberSideChatModelPreference: () => {},
 }
 
 function parentComposerFixture() {
-  let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
-    draft: '',
-    draftRev: 0,
-    occurrences: [],
-  }
-  const listeners = new Set<() => void>()
-  const publish = (): void => { for (const listener of listeners) listener() }
-  const input: ParentComposerInput = {
-    state: {
-      getSnapshot: () => snapshot,
-      subscribe: (listener) => {
-        listeners.add(listener)
-        return () => { listeners.delete(listener) }
-      },
-    },
-    insertReference: (reference, span) => {
-      if (span.draftRev !== snapshot.draftRev) return false
-      snapshot = {
-        draft: `\uFFFC${snapshot.draft}`,
-        draftRev: snapshot.draftRev + 1,
-        occurrences: [{
-          occurrenceId: 1,
-          source: reference.source,
-          ref: reference.ref,
-          offset: 0,
-        }],
-      }
-      publish()
-      return true
-    },
-    setDraft: (draft) => {
-      snapshot = {
-        draft,
-        draftRev: snapshot.draftRev + 1,
-        occurrences: draft.includes('\uFFFC') ? snapshot.occurrences : [],
-      }
-      publish()
-    },
-  }
-  return { input, snapshot: () => snapshot }
+  return composerReferenceFixture('', 'legacy')
 }
 
 afterEach(() => {
@@ -198,13 +161,11 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       expect(captureMocks.capture).toHaveBeenCalledOnce()
       expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-      const askButton = screen.getByRole('button', { name: 'Ask in side chat' })
-      fireEvent.pointerDown(askButton, { pointerType: 'touch' })
-      expect(screen.getByRole('complementary', { name: 'Side Chat' })).toBeInTheDocument()
-      // Some mobile engines retarget the rest of a touch sequence after the
-      // pointerdown handler replaces the toolbar. That sequence must not
-      // recapture the still-native browser selection.
+      expect(screen.queryByRole('dialog', { name: 'Add annotation comment' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Ask in side chat' })).not.toBeInTheDocument()
+      // Some mobile engines retarget the rest of a touch sequence after Cancel
+      // removes the complete interaction. It must not recapture the still-native
+      // browser selection.
       fireEvent.touchStart(document.body)
       fireEvent.touchEnd(document.body)
       fireEvent.mouseDown(document.body)
@@ -411,6 +372,8 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     const composer = parentComposerFixture()
     const update = vi.fn((annotationIndex: number, comment?: string) =>
       updateConversationAnnotation(composer.input, annotationIndex, comment))
+    const remove = vi.fn((annotationIndex: number) =>
+      removeConversationAnnotation(composer.input, annotationIndex))
     const reconcilePersistence = vi.fn()
     const sessions = {
       subscribeList: () => () => {},
@@ -421,6 +384,7 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       nextConversationAnnotationNumber: () => conversationAnnotations(composer.snapshot()).length + 1,
       addSelectionToConversation: (selection: ConversationSelection, comment?: string) =>
         addSelectionToConversation(composer.input, selection, comment),
+      removeConversationAnnotation: remove,
       updateConversationAnnotation: update,
       reconcileConversationAnnotationPersistence: reconcilePersistence,
       notify: vi.fn(),
@@ -469,6 +433,26 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
       ])
       expect(screen.queryByRole('dialog', { name: 'Edit annotation comment' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Edit annotation 1' })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit annotation 1' }))
+      await act(async () => { await new Promise(resolve => window.requestAnimationFrame(resolve)) })
+      expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(remove).not.toHaveBeenCalled()
+      expect(conversationAnnotations(composer.snapshot())).toEqual([
+        { text: 'Selected text', comment: 'Revised note' },
+      ])
+      expect(screen.queryByRole('dialog', { name: 'Edit annotation comment' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit annotation 1' }))
+      await act(async () => { await new Promise(resolve => window.requestAnimationFrame(resolve)) })
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+      expect(remove).toHaveBeenCalledWith(0)
+      expect(remove).toHaveLastReturnedWith(true)
+      expect(conversationAnnotations(composer.snapshot())).toEqual([])
+      expect(composer.snapshot()).toMatchObject({ draft: '', occurrences: [] })
+      expect(screen.queryByRole('dialog', { name: 'Edit annotation comment' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Edit annotation 1' })).not.toBeInTheDocument()
     } finally {
       cleanup()
       if (originalClientRects === undefined) delete (Range.prototype as Partial<Range>).getClientRects

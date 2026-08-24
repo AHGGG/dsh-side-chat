@@ -1,11 +1,12 @@
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '../../shared/contracts.js'
+import { draftWithoutOccurrence } from './composer-reference.js'
 import type {
   ParentComposerInput,
   ParentComposerInputSnapshot,
   ParentComposerOccurrence,
   SelectionReferenceSource,
-} from './add-to-conversation.js'
+} from './composer-reference.js'
 
 export const SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE = 'dsh-side-chat-conversation'
 
@@ -179,26 +180,18 @@ function matchingOccurrences(
   })
 }
 
-function occurrenceLength(occurrence: ParentComposerOccurrence): number {
-  if (occurrence.length !== undefined && Number.isSafeInteger(occurrence.length) && occurrence.length > 0) {
-    return occurrence.length
-  }
-  try {
-    return `@${decodeReferencedConversation(occurrence.ref).title}`.length
-  } catch {
-    return 1
-  }
-}
-
 function removeOccurrence(input: ParentComposerInput, occurrenceId: number): void {
   const snapshot = input.state.getSnapshot()
   const occurrence = snapshot.occurrences.find(candidate => candidate.occurrenceId === occurrenceId)
   if (occurrence === undefined) return
-  let start = occurrence.offset
-  let end = occurrence.offset + occurrenceLength(occurrence)
-  if (snapshot.draft[end] === ' ') end += 1
-  else if (start > 0 && snapshot.draft[start - 1] === ' ') start -= 1
-  input.setDraft(snapshot.draft.slice(0, start) + snapshot.draft.slice(end))
+  let title: string
+  try {
+    title = decodeReferencedConversation(occurrence.ref).title
+  } catch {
+    return
+  }
+  const draft = draftWithoutOccurrence(snapshot, occurrence, title, { consumeAdjacentSpace: true })
+  if (draft !== undefined) input.setDraft(draft)
 }
 
 /** Insert or refresh one Side Chat label without duplicating an older snapshot. */

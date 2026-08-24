@@ -1,6 +1,6 @@
 import type { SessionId } from '../../shared/contracts.js'
 import {
-  conversationAnnotationReference,
+  conversationAnnotationRecoveryRecord,
   removeOrphanedConversationAnnotationPlaceholder,
   restoreConversationAnnotationReference,
 } from './add-to-conversation.js'
@@ -14,12 +14,21 @@ interface AnnotationStorage {
   removeItem(key: string): void
 }
 
-interface StoredAnnotationDraft {
+interface StoredAnnotationDraftV1 {
   readonly version: 1
   readonly draft: string
-  readonly projection?: string
   readonly ref: string
 }
+
+interface StoredAnnotationDraftV2 {
+  readonly version: 2
+  readonly displayDraft: string
+  readonly mirrorDraft: string
+  readonly baseDraft: string
+  readonly ref: string
+}
+
+type StoredAnnotationDraft = StoredAnnotationDraftV1 | StoredAnnotationDraftV2
 
 function browserSessionStorage(): AnnotationStorage | undefined {
   if (typeof window === 'undefined') return
@@ -34,37 +43,16 @@ function storageKey(sessionId: SessionId): string {
   return `${STORAGE_PREFIX}${encodeURIComponent(sessionId)}`
 }
 
-function clipboardProjection(snapshot: ParentComposerInputSnapshot): string | undefined {
-  let draft = snapshot.draft
-  const occurrences = [...snapshot.occurrences].sort((a, b) => b.offset - a.offset)
-  for (const occurrence of occurrences) {
-    const length = occurrence.length ?? 1
-    if (!Number.isSafeInteger(occurrence.offset)
-      || occurrence.offset < 0
-      || !Number.isSafeInteger(length)
-      || length <= 0
-      || occurrence.offset + length > draft.length
-      || occurrence.clipboardText === undefined) return
-    draft = draft.slice(0, occurrence.offset)
-      + occurrence.clipboardText
-      + draft.slice(occurrence.offset + length)
-  }
-  return draft
+function recordOf(snapshot: ParentComposerInputSnapshot): StoredAnnotationDraftV2 | undefined {
+  const record = conversationAnnotationRecoveryRecord(snapshot)
+  return record === undefined ? undefined : { version: 2, ...record }
 }
 
-function recordOf(snapshot: ParentComposerInputSnapshot): StoredAnnotationDraft | undefined {
-  const ref = conversationAnnotationReference(snapshot)
-  if (ref === undefined) return
-  const projection = clipboardProjection(snapshot)
-  return {
-    version: 1,
-    draft: snapshot.draft,
-    ...(projection === undefined ? {} : { projection }),
-    ref,
-  }
+function displayDraft(record: StoredAnnotationDraft): string {
+  return record.version === 1 ? record.draft : record.displayDraft
 }
 
-/** Tab-scoped recovery for drafts persisted without their runtime occurrences. */
+/** Tab-scoped recovery for drafts persisted as a reference clipboard projection. */
 export class ConversationAnnotationPersistence {
   private readonly observedSessions = new Set<string>()
 
@@ -81,13 +69,25 @@ export class ConversationAnnotationPersistence {
     }
 
     const stored = this.read(key)
-    if (stored !== undefined
-      && (snapshot.draft === stored.draft || snapshot.draft === stored.projection)) {
-      this.observedSessions.add(key)
-      if (restoreConversationAnnotationReference(input, stored.ref)) return
-      this.remove(key)
-      removeOrphanedConversationAnnotationPlaceholder(input)
-      return
+    if (stored !== undefined) {
+      const exactDisplayDraft = snapshot.draft === displayDraft(stored)
+      const exactMirrorDraft = stored.version === 2 && snapshot.draft === stored.mirrorDraft
+      if (exactDisplayDraft || exactMirrorDraft) {
+        this.observedSessions.add(key)
+        const restored = restoreConversationAnnotationReference(
+          input,
+          stored.ref,
+          stored.version === 2 ? stored.mirrorDraft : undefined,
+          stored.version === 2 ? stored.baseDraft : undefined,
+        )
+        if (restored) return
+        // Keep v2 mirror text recoverable after a transient insert refusal. A
+        // malformed or stale display record is removed and sanitized instead.
+        if (exactMirrorDraft && input.state.getSnapshot().draft === stored.mirrorDraft) return
+        this.remove(key)
+        removeOrphanedConversationAnnotationPlaceholder(input)
+        return
+      }
     }
 
     // A live occurrence disappeared in this plugin lifetime: removal or send
@@ -110,15 +110,27 @@ export class ConversationAnnotationPersistence {
     try {
       const raw = this.storage.getItem(key)
       if (raw === null) return
-      const value = JSON.parse(raw) as Partial<StoredAnnotationDraft>
-      return value.version === 1
-        && typeof value.draft === 'string'
+      const value = JSON.parse(raw) as {
+        readonly version?: unknown
+        readonly draft?: unknown
+        readonly displayDraft?: unknown
+        readonly mirrorDraft?: unknown
+        readonly baseDraft?: unknown
+        readonly ref?: unknown
+      }
+      if (value.version === 1 && typeof value.draft === 'string' && typeof value.ref === 'string') {
+        return { version: 1, draft: value.draft, ref: value.ref }
+      }
+      return value.version === 2
+        && typeof value.displayDraft === 'string'
+        && typeof value.mirrorDraft === 'string'
+        && typeof value.baseDraft === 'string'
         && typeof value.ref === 'string'
-        && (value.projection === undefined || typeof value.projection === 'string')
         ? {
-            version: 1,
-            draft: value.draft,
-            ...(value.projection === undefined ? {} : { projection: value.projection }),
+            version: 2,
+            displayDraft: value.displayDraft,
+            mirrorDraft: value.mirrorDraft,
+            baseDraft: value.baseDraft,
             ref: value.ref,
           }
         : undefined

@@ -414,6 +414,17 @@ export function Rc6SideChatOverlay({
             setEditingAnnotation(null)
           }}
           onAnnotationEditorChange={(open) => { annotationEditing.current = open }}
+          onRemoveAnnotation={() => {
+            try {
+              if (!sessions.removeConversationAnnotation(editingAnnotation.annotationIndex)) {
+                sessions.notify({ kind: 'warning', text: 'Could not remove the annotation.' })
+              }
+            } catch {
+              sessions.notify({ kind: 'warning', text: 'Could not remove the annotation.' })
+            }
+            annotationEditing.current = false
+            setEditingAnnotation(null)
+          }}
           onMoreDetails={() => {}}
           onAskInSideChat={() => {}}
           onDismiss={() => {
