@@ -7,10 +7,17 @@ const sideChatCss = readFileSync(
   new URL('../../src/client/panel/side-chat.css', import.meta.url),
   'utf8',
 )
-const harnessThemeCss = readFileSync(
-  require.resolve('@deepseek-ai/dsh-client-ui-theme/styles/design-platform.css'),
+const harnessThemeBundle = readFileSync(
+  require.resolve('@deepseek-ai/dsh-client-ui-theme/client'),
   'utf8',
 )
+const encodedThemeCss = /\bdesign_platform_css_default\s*=\s*("(?:[^"\\]|\\.)*")/.exec(
+  harnessThemeBundle,
+)?.[1]
+if (encodedThemeCss === undefined) throw new Error('DSH theme bundle does not contain design-platform.css')
+const parsedThemeCss: unknown = JSON.parse(encodedThemeCss)
+if (typeof parsedThemeCss !== 'string') throw new Error('DSH theme bundle contains invalid design-platform.css')
+const harnessThemeCss = parsedThemeCss
 
 function themeValues(dark: boolean): Map<string, string> {
   const values = new Map<string, string>()
@@ -33,6 +40,22 @@ function resolveThemeValue(name: string, values: ReadonlyMap<string, string>, se
 }
 
 function rgb(value: string): readonly [number, number, number] {
+  const shortHex = /^#([\da-f])([\da-f])([\da-f])(?:[\da-f])?$/i.exec(value)
+  if (shortHex !== null) {
+    return [
+      Number.parseInt(shortHex[1]!.repeat(2), 16),
+      Number.parseInt(shortHex[2]!.repeat(2), 16),
+      Number.parseInt(shortHex[3]!.repeat(2), 16),
+    ]
+  }
+  const hex = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})(?:[\da-f]{2})?$/i.exec(value)
+  if (hex !== null) {
+    return [
+      Number.parseInt(hex[1]!, 16),
+      Number.parseInt(hex[2]!, 16),
+      Number.parseInt(hex[3]!, 16),
+    ]
+  }
   const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number)
   if (channels?.length !== 3) throw new Error(`Expected an RGB color, received: ${value}`)
   return [channels[0]!, channels[1]!, channels[2]!]

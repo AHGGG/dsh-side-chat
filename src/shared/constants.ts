@@ -1,4 +1,4 @@
-/** Published DSH and toolchain baseline inspected by this package. */
+/** Historical rc.6 adapter baseline; package.json owns current compatibility metadata. */
 export const DSH_BASELINE = Object.freeze({
   repository: 'https://github.com/deepseek-ai/deepseek-harness',
   npmPackage: '@deepseek-ai/dsh',
