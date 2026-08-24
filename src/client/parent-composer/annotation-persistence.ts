@@ -17,6 +17,7 @@ interface AnnotationStorage {
 interface StoredAnnotationDraft {
   readonly version: 1
   readonly draft: string
+  readonly projection?: string
   readonly ref: string
 }
 
@@ -33,12 +34,37 @@ function storageKey(sessionId: SessionId): string {
   return `${STORAGE_PREFIX}${encodeURIComponent(sessionId)}`
 }
 
-function recordOf(snapshot: ParentComposerInputSnapshot): StoredAnnotationDraft | undefined {
-  const ref = conversationAnnotationReference(snapshot)
-  return ref === undefined ? undefined : { version: 1, draft: snapshot.draft, ref }
+function clipboardProjection(snapshot: ParentComposerInputSnapshot): string | undefined {
+  let draft = snapshot.draft
+  const occurrences = [...snapshot.occurrences].sort((a, b) => b.offset - a.offset)
+  for (const occurrence of occurrences) {
+    const length = occurrence.length ?? 1
+    if (!Number.isSafeInteger(occurrence.offset)
+      || occurrence.offset < 0
+      || !Number.isSafeInteger(length)
+      || length <= 0
+      || occurrence.offset + length > draft.length
+      || occurrence.clipboardText === undefined) return
+    draft = draft.slice(0, occurrence.offset)
+      + occurrence.clipboardText
+      + draft.slice(occurrence.offset + length)
+  }
+  return draft
 }
 
-/** Tab-scoped recovery for rc.6 drafts that persist U+FFFC without occurrences. */
+function recordOf(snapshot: ParentComposerInputSnapshot): StoredAnnotationDraft | undefined {
+  const ref = conversationAnnotationReference(snapshot)
+  if (ref === undefined) return
+  const projection = clipboardProjection(snapshot)
+  return {
+    version: 1,
+    draft: snapshot.draft,
+    ...(projection === undefined ? {} : { projection }),
+    ref,
+  }
+}
+
+/** Tab-scoped recovery for drafts persisted without their runtime occurrences. */
 export class ConversationAnnotationPersistence {
   private readonly observedSessions = new Set<string>()
 
@@ -55,7 +81,8 @@ export class ConversationAnnotationPersistence {
     }
 
     const stored = this.read(key)
-    if (stored !== undefined && snapshot.draft === stored.draft) {
+    if (stored !== undefined
+      && (snapshot.draft === stored.draft || snapshot.draft === stored.projection)) {
       this.observedSessions.add(key)
       if (restoreConversationAnnotationReference(input, stored.ref)) return
       this.remove(key)
@@ -84,8 +111,16 @@ export class ConversationAnnotationPersistence {
       const raw = this.storage.getItem(key)
       if (raw === null) return
       const value = JSON.parse(raw) as Partial<StoredAnnotationDraft>
-      return value.version === 1 && typeof value.draft === 'string' && typeof value.ref === 'string'
-        ? { version: 1, draft: value.draft, ref: value.ref }
+      return value.version === 1
+        && typeof value.draft === 'string'
+        && typeof value.ref === 'string'
+        && (value.projection === undefined || typeof value.projection === 'string')
+        ? {
+            version: 1,
+            draft: value.draft,
+            ...(value.projection === undefined ? {} : { projection: value.projection }),
+            ref: value.ref,
+          }
         : undefined
     } catch {
       return

@@ -32,6 +32,8 @@ export interface ParentComposerOccurrence {
   readonly offset: number
   /** Present in newer DSH input snapshots; older rc.6 fixtures omit it. */
   readonly length?: number
+  /** Draft-persistence projection cached by newer DSH versions. */
+  readonly clipboardText?: string
 }
 
 export interface ParentComposerInputSnapshot {
@@ -193,6 +195,14 @@ function selectionOccurrences(snapshot: ParentComposerInputSnapshot): readonly P
   return snapshot.occurrences.filter(occurrence => occurrence.source === SELECTION_REFERENCE_SOURCE)
 }
 
+function occurrenceLength(occurrence: ParentComposerOccurrence): number {
+  return occurrence.length !== undefined
+    && Number.isSafeInteger(occurrence.length)
+    && occurrence.length > 0
+    ? occurrence.length
+    : 1
+}
+
 function storedConversationAnnotations(
   snapshot: ParentComposerInputSnapshot,
 ): readonly StoredConversationAnnotation[] {
@@ -232,7 +242,8 @@ function draftWithoutSelectionOccurrences(snapshot: ParentComposerInputSnapshot)
   const occurrences = [...selectionOccurrences(snapshot)].sort((a, b) => b.offset - a.offset)
   let draft = snapshot.draft
   for (const occurrence of occurrences) {
-    draft = draft.slice(0, occurrence.offset) + draft.slice(occurrence.offset + 1)
+    draft = draft.slice(0, occurrence.offset)
+      + draft.slice(occurrence.offset + occurrenceLength(occurrence))
   }
   // Add to chat owns the blank lines immediately after its leading occurrence.
   if (occurrences.some(occurrence => occurrence.offset === 0)) {
@@ -266,6 +277,12 @@ export const selectionReferenceSource: SelectionReferenceSource = {
   },
 }
 
+function annotationClipboardText(
+  annotations: readonly StoredConversationAnnotation[],
+): string {
+  return annotations.map(annotation => annotation.text).join('\n\n')
+}
+
 function writeConversationAnnotations(
   input: ParentComposerInput,
   before: ParentComposerInputSnapshot,
@@ -274,11 +291,12 @@ function writeConversationAnnotations(
   const draft = draftWithoutSelectionOccurrences(before)
   if (selectionOccurrences(before).length > 0) input.setDraft(draft)
   const insertionState = input.state.getSnapshot()
+  const ref = encodeSelectionReference(annotations)
   const inserted = input.insertReference({
     source: SELECTION_REFERENCE_SOURCE,
-    ref: encodeSelectionReference(annotations),
+    ref,
     label: SELECTION_REFERENCE_LABEL,
-    clipboardText: annotations.map(annotation => annotation.text).join('\n\n'),
+    clipboardText: annotationClipboardText(annotations),
   }, {
     start: 0,
     end: 0,
@@ -286,10 +304,24 @@ function writeConversationAnnotations(
   })
   if (!inserted) return false
 
-  // DSH keeps the occurrence and owns its model serialization. The two blank
-  // lines reserve the first visual row for the plugin's interactive capsule.
-  input.setDraft(`${OBJECT_REPLACEMENT_CHARACTER}\n\n${draft}`)
-  return true
+  // rc.7 inserts one U+FFFC placeholder, while newer DSH versions insert the
+  // full @label range. Preserve whichever range DSH minted and only replace
+  // its trailing separator so the first visual row remains available to the
+  // plugin's interactive capsule.
+  const afterInsertion = input.state.getSnapshot()
+  const occurrence = selectionOccurrences(afterInsertion)
+    .find(candidate => candidate.offset === 0 && candidate.ref === ref)
+  const displayLength = occurrence === undefined ? 0 : occurrenceLength(occurrence)
+  if (occurrence === undefined || displayLength > afterInsertion.draft.length) {
+    input.setDraft(draft)
+    return false
+  }
+  const display = afterInsertion.draft.slice(0, displayLength)
+  input.setDraft(`${display}\n\n${draft}`)
+  const preserved = selectionOccurrences(input.state.getSnapshot())
+    .some(candidate => candidate.offset === 0 && candidate.ref === ref)
+  if (!preserved) input.setDraft(draft)
+  return preserved
 }
 
 /** Add one passage to the parent composer's aggregated annotation occurrence. */
@@ -329,7 +361,10 @@ export function conversationAnnotationReference(
   snapshot: ParentComposerInputSnapshot,
 ): string | undefined {
   const occurrence = selectionOccurrences(snapshot).find(candidate => candidate.offset === 0)
-  if (occurrence === undefined || !snapshot.draft.startsWith(OBJECT_REPLACEMENT_CHARACTER)) return
+  if (occurrence === undefined
+    || occurrenceLength(occurrence) > snapshot.draft.length
+    || (occurrence.length === undefined
+      && !snapshot.draft.startsWith(OBJECT_REPLACEMENT_CHARACTER))) return
   try {
     decodeStoredSelectionReference(occurrence.ref)
     return occurrence.ref
@@ -340,14 +375,25 @@ export function conversationAnnotationReference(
 
 function draftWithoutOrphanedAnnotationPrefix(
   snapshot: ParentComposerInputSnapshot,
+  ref?: string,
 ): string | undefined {
-  const prefix = `${OBJECT_REPLACEMENT_CHARACTER}\n\n`
-  if (!snapshot.draft.startsWith(prefix)
-    || snapshot.occurrences.some(occurrence => occurrence.offset === 0)) return
-  return snapshot.draft.slice(prefix.length)
+  if (snapshot.occurrences.some(occurrence => occurrence.offset === 0)) return
+  const prefixes = [
+    `${OBJECT_REPLACEMENT_CHARACTER}\n\n`,
+    `@${SELECTION_REFERENCE_LABEL}\n\n`,
+  ]
+  if (ref !== undefined) {
+    try {
+      prefixes.push(`${annotationClipboardText(decodeStoredSelectionReference(ref))}\n\n`)
+    } catch {
+      // Invalid stored references cannot authorize removing plain draft text.
+    }
+  }
+  const prefix = prefixes.find(candidate => snapshot.draft.startsWith(candidate))
+  return prefix === undefined ? undefined : snapshot.draft.slice(prefix.length)
 }
 
-/** Remove the plugin-owned prefix when rc.6 restored its draft without occurrences. */
+/** Remove a recognized plugin-owned prefix restored without its occurrence. */
 export function removeOrphanedConversationAnnotationPlaceholder(input: ParentComposerInput): boolean {
   const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot())
   if (draft === undefined) return false
@@ -355,7 +401,7 @@ export function removeOrphanedConversationAnnotationPlaceholder(input: ParentCom
   return true
 }
 
-/** Rehydrate a lost rc.6 occurrence only over the exact plugin-owned orphan prefix. */
+/** Rehydrate a lost occurrence only over an exact stored plugin projection. */
 export function restoreConversationAnnotationReference(
   input: ParentComposerInput,
   ref: string,
@@ -366,7 +412,7 @@ export function restoreConversationAnnotationReference(
   } catch {
     return false
   }
-  const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot())
+  const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot(), ref)
   if (draft === undefined) return false
   input.setDraft(draft)
   return writeConversationAnnotations(input, input.state.getSnapshot(), annotations)

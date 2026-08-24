@@ -121,4 +121,25 @@ describe('selection action touch activation', () => {
     expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
     expect(onAskInSideChat).not.toHaveBeenCalled()
   })
+
+  it('submits the optional annotation comment from Save', () => {
+    const onAddToChat = vi.fn()
+    const onDismiss = vi.fn()
+    render(<SelectionActions
+      selection={selectedPassage}
+      onAddToChat={onAddToChat}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
+      target: { value: '  Keep this note  ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onAddToChat).toHaveBeenCalledWith(selectedPassage, 'Keep this note')
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
 })

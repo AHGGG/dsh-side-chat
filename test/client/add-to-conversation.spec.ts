@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   addSelectionToConversation,
+  conversationAnnotationReference,
   conversationAnnotations,
   conversationSelectionAnnotations,
   parseAnnotatedConversationPrompt,
   removeConversationAnnotations,
+  SELECTION_REFERENCE_LABEL,
   selectionReferenceSource,
   updateConversationAnnotation,
   type ParentComposerInput,
@@ -76,6 +78,73 @@ describe('Add to chat composer integration', () => {
       text: selection.text,
       selection,
     }])
+  })
+
+  it('preserves newer DSH full-label occurrence ranges when reserving the capsule row', () => {
+    let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
+      draft: 'Existing draft', draftRev: 4, occurrences: [],
+    }
+    const setDraft = vi.fn((draft: string) => {
+      const previous = snapshot.draft
+      let prefix = 0
+      const common = Math.min(previous.length, draft.length)
+      while (prefix < common && previous[prefix] === draft[prefix]) prefix += 1
+      let suffix = 0
+      while (suffix < common - prefix
+        && previous[previous.length - 1 - suffix] === draft[draft.length - 1 - suffix]) suffix += 1
+      const end = previous.length - suffix
+      const insertedLength = draft.length - suffix - prefix
+      const delta = insertedLength - (end - prefix)
+      const occurrences = snapshot.occurrences.flatMap((occurrence) => {
+        const length = occurrence.length ?? 1
+        if (occurrence.offset + length <= prefix) return [occurrence]
+        if (occurrence.offset >= end) return [{ ...occurrence, offset: occurrence.offset + delta }]
+        return []
+      })
+      snapshot = { draft, draftRev: snapshot.draftRev + 1, occurrences }
+    })
+    const input: ParentComposerInput = {
+      state: { getSnapshot: () => snapshot },
+      insertReference: (reference, span) => {
+        if (span.draftRev !== snapshot.draftRev) return false
+        const display = `@${reference.label}`
+        const gap = snapshot.draft.length === 0 || snapshot.draft[0] !== ' ' ? ' ' : ''
+        snapshot = {
+          draft: `${display}${gap}${snapshot.draft}`,
+          draftRev: snapshot.draftRev + 1,
+          occurrences: [{
+            occurrenceId: 1,
+            source: reference.source,
+            ref: reference.ref,
+            offset: 0,
+            length: display.length,
+            clipboardText: reference.clipboardText,
+          }],
+        }
+        return true
+      },
+      setDraft,
+    }
+
+    expect(addSelectionToConversation(input, selection, 'Current DSH')).toBe(true)
+    expect(snapshot.draft).toBe(`@${SELECTION_REFERENCE_LABEL}\n\nExisting draft`)
+    expect(snapshot.occurrences).toHaveLength(1)
+    expect(snapshot.occurrences[0]?.length).toBe(`@${SELECTION_REFERENCE_LABEL}`.length)
+    expect(conversationAnnotations(snapshot)).toEqual([{
+      text: selection.text,
+      comment: 'Current DSH',
+    }])
+    expect(conversationAnnotationReference(snapshot)).toBe(snapshot.occurrences[0]?.ref)
+
+    expect(updateConversationAnnotation(input, 0, 'Updated on current DSH')).toBe(true)
+    expect(snapshot.draft).toBe(`@${SELECTION_REFERENCE_LABEL}\n\nExisting draft`)
+    expect(conversationAnnotations(snapshot)).toEqual([{
+      text: selection.text,
+      comment: 'Updated on current DSH',
+    }])
+
+    expect(removeConversationAnnotations(input)).toBe(true)
+    expect(snapshot).toMatchObject({ draft: 'Existing draft', occurrences: [] })
   })
 
   it('aggregates multiple passages in one removable annotation occurrence', () => {
