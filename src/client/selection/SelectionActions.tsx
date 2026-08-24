@@ -22,6 +22,8 @@ export interface SelectionActionsProps {
   readonly onMoreDetails: (selection: ConversationSelection) => void
   readonly onAskInSideChat: (selection: ConversationSelection) => void
   readonly onAnnotationEditorChange?: (open: boolean) => void
+  /** Explicit destructive action offered only while editing a persisted annotation. */
+  readonly onRemoveAnnotation?: () => void
   readonly onDismiss: () => void
 }
 
@@ -64,9 +66,8 @@ export function calculateSelectionActionsPosition(
   const belowFits = below + height <= viewportBottom - edge
   const aboveFits = above >= viewportTop + edge
   let top: number
-  if (touch && belowFits) top = below
+  if (belowFits) top = below
   else if (aboveFits) top = above
-  else if (belowFits) top = below
   else {
     const roomAbove = rect.y - aboveGap - viewportTop - edge
     const roomBelow = viewportBottom - edge - rect.y - rect.height - belowGap
@@ -88,17 +89,20 @@ export function SelectionActions({
   onMoreDetails,
   onAskInSideChat,
   onAnnotationEditorChange,
+  onRemoveAnnotation,
   onDismiss,
 }: SelectionActionsProps) {
   const [editingAnnotation, setEditingAnnotation] = useState(annotationEditor !== undefined)
   const [comment, setComment] = useState(annotationEditor?.initialComment ?? '')
-  const [toolbarGeometry, setToolbarGeometry] = useState(() => ({
+  const [toolbarSize, setToolbarSize] = useState(() => ({
     width: 0,
     height: 0,
-    viewportWidth: selection.rect.viewportWidth,
-    viewportHeight: selection.rect.viewportHeight,
-    viewportOffsetLeft: 0,
-    viewportOffsetTop: 0,
+  }))
+  const [viewport, setViewport] = useState(() => ({
+    width: selection.rect.viewportWidth,
+    height: selection.rect.viewportHeight,
+    offsetLeft: 0,
+    offsetTop: 0,
   }))
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -108,80 +112,89 @@ export function SelectionActions({
   } | null>(null)
   const toolbarPosition = calculateSelectionActionsPosition(
     selection.rect,
-    toolbarGeometry,
+    toolbarSize,
     touchInteraction,
-    {
-      width: toolbarGeometry.viewportWidth,
-      height: toolbarGeometry.viewportHeight,
-      offsetLeft: toolbarGeometry.viewportOffsetLeft,
-      offsetTop: toolbarGeometry.viewportOffsetTop,
-    },
+    viewport,
   )
   const style: CSSProperties = {
     left: toolbarPosition.left,
     top: toolbarPosition.top,
   }
-  const editorWidth = Math.min(420, selection.rect.viewportWidth - 16)
-  const editorAbove = selection.rect.y - 118
+  const viewportLeft = viewport.offsetLeft
+  const viewportTop = viewport.offsetTop
+  const viewportRight = viewportLeft + viewport.width
+  const viewportBottom = viewportTop + viewport.height
+  const editorEdge = 8
+  const editorHeight = 118
+  const editorWidth = Math.max(0, Math.min(420, viewport.width - editorEdge * 2))
+  const editorAbove = selection.rect.y - editorHeight
+  const editorBelow = selection.rect.y + selection.rect.height + 12
   const editorStyle: CSSProperties = {
     left: clamp(
       selection.rect.x + selection.rect.width + 28,
-      8,
-      selection.rect.viewportWidth - editorWidth - 8,
+      viewportLeft + editorEdge,
+      viewportRight - editorWidth - editorEdge,
     ),
-    top: editorAbove >= 8
-      ? editorAbove
-      : clamp(
-          selection.rect.y + selection.rect.height + 12,
-          8,
-          selection.rect.viewportHeight - 126,
-        ),
+    top: clamp(
+      editorAbove >= viewportTop + editorEdge ? editorAbove : editorBelow,
+      viewportTop + editorEdge,
+      viewportBottom - editorHeight - editorEdge,
+    ),
     width: editorWidth,
   }
+  const markerEdge = 4
+  const markerSize = 22
   const markerStyle: CSSProperties = {
-    left: clamp(selection.rect.x + selection.rect.width + 3, 4, selection.rect.viewportWidth - 26),
-    top: clamp(selection.rect.y - 12, 4, selection.rect.viewportHeight - 26),
+    left: clamp(
+      selection.rect.x + selection.rect.width + 3,
+      viewportLeft + markerEdge,
+      viewportRight - markerSize - markerEdge,
+    ),
+    top: clamp(
+      selection.rect.y - 12,
+      viewportTop + markerEdge,
+      viewportBottom - markerSize - markerEdge,
+    ),
   }
   const markerNumber = annotationNumber > 99 ? '99+' : String(annotationNumber)
   const keepSelection = (event: MouseEvent<HTMLDivElement>): void => { event.preventDefault() }
 
   useLayoutEffect(() => {
-    if (editingAnnotation) return
-    const toolbar = toolbarRef.current
-    if (toolbar === null) return
+    const visualViewport = window.visualViewport
     const measure = (): void => {
-      const bounds = toolbar.getBoundingClientRect()
-      const visualViewport = window.visualViewport
-      const viewportWidth = visualViewport?.width ?? window.innerWidth ?? selection.rect.viewportWidth
-      const viewportHeight = visualViewport?.height ?? window.innerHeight ?? selection.rect.viewportHeight
-      const next = {
-        width: bounds.width,
-        height: bounds.height,
-        viewportWidth,
-        viewportHeight,
-        viewportOffsetLeft: visualViewport?.offsetLeft ?? 0,
-        viewportOffsetTop: visualViewport?.offsetTop ?? 0,
+      const nextViewport = {
+        width: visualViewport?.width ?? window.innerWidth ?? selection.rect.viewportWidth,
+        height: visualViewport?.height ?? window.innerHeight ?? selection.rect.viewportHeight,
+        offsetLeft: visualViewport?.offsetLeft ?? 0,
+        offsetTop: visualViewport?.offsetTop ?? 0,
       }
-      setToolbarGeometry(current => current.width === next.width
-        && current.height === next.height
-        && current.viewportWidth === next.viewportWidth
-        && current.viewportHeight === next.viewportHeight
-        && current.viewportOffsetLeft === next.viewportOffsetLeft
-        && current.viewportOffsetTop === next.viewportOffsetTop
+      setViewport(current => current.width === nextViewport.width
+        && current.height === nextViewport.height
+        && current.offsetLeft === nextViewport.offsetLeft
+        && current.offsetTop === nextViewport.offsetTop
         ? current
-        : next)
+        : nextViewport)
+      const toolbar = toolbarRef.current
+      if (toolbar === null) return
+      const bounds = toolbar.getBoundingClientRect()
+      const nextSize = { width: bounds.width, height: bounds.height }
+      setToolbarSize(current => current.width === nextSize.width
+        && current.height === nextSize.height
+        ? current
+        : nextSize)
     }
     measure()
+    const toolbar = toolbarRef.current
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
-    observer?.observe(toolbar)
+    if (toolbar !== null) observer?.observe(toolbar)
     window.addEventListener('resize', measure)
-    window.visualViewport?.addEventListener('resize', measure)
-    window.visualViewport?.addEventListener('scroll', measure)
+    visualViewport?.addEventListener('resize', measure)
+    visualViewport?.addEventListener('scroll', measure)
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', measure)
-      window.visualViewport?.removeEventListener('resize', measure)
-      window.visualViewport?.removeEventListener('scroll', measure)
+      visualViewport?.removeEventListener('resize', measure)
+      visualViewport?.removeEventListener('scroll', measure)
     }
   }, [editingAnnotation, selection, touchInteraction])
 
@@ -193,7 +206,7 @@ export function SelectionActions({
     setEditingAnnotation(false)
     setComment('')
     onAnnotationEditorChange?.(false)
-    if (annotationEditor !== undefined) onDismiss()
+    onDismiss()
   }
   const saveAnnotation = (): void => {
     const trimmed = comment.trim()
@@ -288,6 +301,9 @@ export function SelectionActions({
             onKeyDown={annotationKeyDown}
           />
           <div className="dsh-side-chat-selection-comment-actions">
+            {annotationEditor !== undefined && onRemoveAnnotation !== undefined && (
+              <button type="button" onClick={onRemoveAnnotation}>Remove</button>
+            )}
             <button type="button" onClick={closeEditor}>Cancel</button>
             <button type="submit" className="dsh-side-chat-selection-comment-save">Save</button>
           </div>

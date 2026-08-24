@@ -2,18 +2,16 @@
 
 Ask a focused follow-up about selected text without leaving your current DeepSeek Harness conversation.
 
-> Compatibility: this release targets `@deepseek-ai/dsh@0.1.1-rc.2` exactly.
-
 [简体中文](README.zh-CN.md)
 
-![Ask about selected text in Side Chat, then add an annotated selection to the main chat](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
+![Ask about selected text in Side Chat, then add the Side Chat conversation to the main chat](https://raw.githubusercontent.com/AHGGG/dsh-side-chat/master/docs/assets/side-chat-demo.gif)
 
 ## Install
 
-Install DSH 0.1.1-rc.2 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
+Install DSH rc.7 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.1-rc.2
+npm install --global @deepseek-ai/dsh@0.1.0-rc.7
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
@@ -44,7 +42,8 @@ On phones and tablets, long-press text in a completed message to select it. The 
 2. Select text inside one completed user or assistant message.
 3. Click `Add to chat` to add an optional comment before attaching the passage to the main composer, `More details` to send an explanation request immediately, or `Ask in side chat` to write a focused question.
 4. When writing your own message or question, press `Enter` to send it.
-5. Press `Esc` or click `×` when you are done.
+5. After a Side Chat reply settles, click `Add to conversation` to attach that focused discussion to the main composer as one conversation reference.
+6. Press `Esc` or click `×` when you are done.
 
 Useful details:
 
@@ -52,6 +51,7 @@ Useful details:
 - Use the model control beside Send to choose a provider/model and its available reasoning effort. The choice belongs to Side Chat, does not change the main conversation, and becomes the global default for the next Side Chat.
 - After clicking `Add to chat`, press `Enter` or click `Save` to keep the annotation. Click outside the comment box or click `Cancel` to discard it.
 - `Add to chat` keeps any existing draft text and can collect multiple numbered passages, each with its own optional comment, in one annotation capsule.
+- `Add to conversation` captures the Side Chat's user/assistant history, preserves the main draft, and refreshes the existing reference instead of duplicating it when clicked again.
 - The input grows with its content and becomes scrollable at its maximum height.
 - While a reply is running, the send icon becomes a stop button.
 - Assistant replies use DSH's native Markdown rendering.

@@ -1,8 +1,28 @@
-import type { Context } from '@deepseek-ai/cordis'
 import type { ConversationSelection, SideChatPromptPart } from '../../shared/contracts.js'
+import {
+  draftWithoutOccurrence,
+  LEGACY_REFERENCE_PLACEHOLDER,
+  newlyInsertedOccurrence,
+  occurrenceMatchesDraft,
+  occurrenceRange,
+  referenceDisplayText,
+} from './composer-reference.js'
+import type {
+  ParentComposerInput,
+  ParentComposerInputSnapshot,
+  ParentComposerOccurrence,
+  SelectionReferenceSource,
+} from './composer-reference.js'
+
+export type {
+  ParentComposerInput,
+  ParentComposerInputSnapshot,
+  ParentComposerOccurrence,
+  ParentConversationService,
+  SelectionReferenceSource,
+} from './composer-reference.js'
 
 const SELECTION_REFERENCE_SOURCE = 'dsh-side-chat-selection'
-const OBJECT_REPLACEMENT_CHARACTER = '\uFFFC'
 export const SELECTION_REFERENCE_LABEL = '__dsh_side_chat_annotations__'
 
 export interface ConversationAnnotation {
@@ -23,52 +43,6 @@ export interface ConversationSelectionAnnotation extends ConversationAnnotation 
 interface SelectionReferencePayload {
   readonly version: 2
   readonly annotations: readonly StoredConversationAnnotation[]
-}
-
-export interface ParentComposerOccurrence {
-  readonly occurrenceId: number
-  readonly source: string
-  readonly ref: string
-  readonly offset: number
-}
-
-export interface ParentComposerInputSnapshot {
-  readonly draft: string
-  readonly draftRev: number
-  readonly occurrences: readonly ParentComposerOccurrence[]
-}
-
-export interface ParentComposerInput {
-  readonly state: {
-    getSnapshot(): ParentComposerInputSnapshot
-    subscribe?(listener: () => void): () => void
-  }
-  setDraft(text: string): void
-  insertReference(
-    reference: {
-      readonly source: string
-      readonly ref: string
-      readonly label: string
-      readonly clipboardText: string
-    },
-    span: { readonly start: number; readonly end: number; readonly draftRev: number },
-  ): boolean
-}
-
-export interface ParentConversationService {
-  readonly input: { for(scope: Context): ParentComposerInput }
-}
-
-export interface SelectionReferenceSource {
-  readonly trigger: '@'
-  readonly name: string
-  readonly order: number
-  candidates(): Promise<readonly never[]>
-  onPick(): undefined
-  readonly codec: {
-    clipboardText(ref: string): string
-    serialize(ref: string, signal: AbortSignal): Promise<string>
-  }
 }
 
 function escapeXmlText(value: string): string {
@@ -227,14 +201,17 @@ export function conversationSelectionAnnotations(
 
 function draftWithoutSelectionOccurrences(snapshot: ParentComposerInputSnapshot): string {
   const occurrences = [...selectionOccurrences(snapshot)].sort((a, b) => b.offset - a.offset)
-  let draft = snapshot.draft
+  let current = snapshot
   for (const occurrence of occurrences) {
-    draft = draft.slice(0, occurrence.offset) + draft.slice(occurrence.offset + 1)
+    const draft = draftWithoutOccurrence(current, occurrence, SELECTION_REFERENCE_LABEL)
+    if (draft === undefined) continue
+    current = { ...current, draft }
   }
-  // Add to chat owns the blank lines immediately after its leading occurrence.
+  let draft = current.draft
+  // Add to chat owns the separator immediately after its leading occurrence.
   if (occurrences.some(occurrence => occurrence.offset === 0)) {
     if (draft.startsWith('\n\n')) draft = draft.slice(2)
-    else if (draft.startsWith('\n')) draft = draft.slice(1)
+    else if (draft.startsWith('\n') || draft.startsWith(' ')) draft = draft.slice(1)
   }
   return draft
 }
@@ -269,11 +246,13 @@ function writeConversationAnnotations(
   annotations: readonly StoredConversationAnnotation[],
 ): boolean {
   const draft = draftWithoutSelectionOccurrences(before)
-  if (selectionOccurrences(before).length > 0) input.setDraft(draft)
   const insertionState = input.state.getSnapshot()
+  if (insertionState.draftRev !== before.draftRev || insertionState.draft !== before.draft) return false
+
+  const ref = encodeSelectionReference(annotations)
   const inserted = input.insertReference({
     source: SELECTION_REFERENCE_SOURCE,
-    ref: encodeSelectionReference(annotations),
+    ref,
     label: SELECTION_REFERENCE_LABEL,
     clipboardText: annotations.map(annotation => annotation.text).join('\n\n'),
   }, {
@@ -281,12 +260,77 @@ function writeConversationAnnotations(
     end: 0,
     draftRev: insertionState.draftRev,
   })
+  // Existing annotations are intentionally still live here. If DSH rejects the
+  // insertion, the operation is a no-op instead of deleting the previous chip.
   if (!inserted) return false
 
-  // DSH keeps the occurrence and owns its model serialization. The two blank
-  // lines reserve the first visual row for the plugin's interactive capsule.
-  input.setDraft(`${OBJECT_REPLACEMENT_CHARACTER}\n\n${draft}`)
-  return true
+  const afterInsert = input.state.getSnapshot()
+  const occurrence = newlyInsertedOccurrence(
+    insertionState,
+    afterInsert,
+    SELECTION_REFERENCE_SOURCE,
+    ref,
+  )
+  const rollbackInsertion = (): void => {
+    const current = input.state.getSnapshot()
+    const insertedOccurrence = occurrence === undefined
+      ? undefined
+      : current.occurrences.find(candidate => candidate.occurrenceId === occurrence.occurrenceId)
+    if (insertedOccurrence === undefined || insertedOccurrence.offset !== 0) return
+    const insertedRange = occurrenceRange(current, insertedOccurrence, SELECTION_REFERENCE_LABEL)
+    if (insertedRange === undefined || insertedRange.start !== 0) return
+    let tail = current.draft.slice(insertedRange.end)
+    if (tail.startsWith(' ') && tail.slice(1) === before.draft) tail = before.draft
+    else if (tail !== before.draft) return
+    input.setDraft(tail)
+  }
+  if (occurrence === undefined || occurrence.offset !== 0) {
+    rollbackInsertion()
+    return false
+  }
+  const range = occurrenceRange(afterInsert, occurrence, SELECTION_REFERENCE_LABEL)
+  if (range === undefined || range.start !== 0) {
+    rollbackInsertion()
+    return false
+  }
+
+  // Current DSH inserts the complete `@label` display text followed by an
+  // optional ASCII separating gap. Older releases insert a one-unit U+FFFC
+  // placeholder. At this point the old occurrence is still in the tail; one
+  // tail replacement preserves the new occurrence and removes the old one.
+  let rest = afterInsert.draft.slice(range.end)
+  if (rest.startsWith(' ') && rest.slice(1) === before.draft) rest = before.draft
+  else if (rest !== before.draft) {
+    rollbackInsertion()
+    return false
+  }
+  const display = afterInsert.draft.slice(range.start, range.end)
+  const normalizedDraft = `${display}\n\n${draft}`
+
+  // insertReference and setDraft are separate public transactions. Re-read the
+  // exact occurrence before the second write so a synchronous subscriber cannot
+  // make us normalize a stale insertion.
+  const current = input.state.getSnapshot()
+  const currentOccurrence = current.occurrences.find(candidate => candidate.occurrenceId === occurrence.occurrenceId)
+  if (current.draftRev !== afterInsert.draftRev
+    || current.draft !== afterInsert.draft
+    || currentOccurrence === undefined
+    || currentOccurrence.source !== SELECTION_REFERENCE_SOURCE
+    || currentOccurrence.ref !== ref
+    || !occurrenceMatchesDraft(current, currentOccurrence, SELECTION_REFERENCE_LABEL)) {
+    rollbackInsertion()
+    return false
+  }
+
+  input.setDraft(normalizedDraft)
+  const normalized = input.state.getSnapshot()
+  const retained = normalized.occurrences.find(candidate => candidate.occurrenceId === occurrence.occurrenceId)
+  return normalized.draft === normalizedDraft
+    && retained !== undefined
+    && retained.source === SELECTION_REFERENCE_SOURCE
+    && retained.ref === ref
+    && retained.offset === 0
+    && occurrenceMatchesDraft(normalized, retained, SELECTION_REFERENCE_LABEL)
 }
 
 /** Add one passage to the parent composer's aggregated annotation occurrence. */
@@ -297,6 +341,22 @@ export function addSelectionToConversation(
 ): boolean {
   const before = input.state.getSnapshot()
   const annotations = [...storedConversationAnnotations(before), annotationFromSelection(selection, comment)]
+  return writeConversationAnnotations(input, before, annotations)
+}
+
+/** Remove one unsent selected-passage annotation, retaining the aggregate when needed. */
+export function removeConversationAnnotation(
+  input: ParentComposerInput,
+  annotationIndex: number,
+): boolean {
+  const before = input.state.getSnapshot()
+  const annotations = [...storedConversationAnnotations(before)]
+  if (!Number.isSafeInteger(annotationIndex) || annotations[annotationIndex] === undefined) return false
+  annotations.splice(annotationIndex, 1)
+  if (annotations.length === 0) {
+    input.setDraft(draftWithoutSelectionOccurrences(before))
+    return selectionOccurrences(input.state.getSnapshot()).length === 0
+  }
   return writeConversationAnnotations(input, before, annotations)
 }
 
@@ -321,12 +381,103 @@ export function updateConversationAnnotation(
   return writeConversationAnnotations(input, before, annotations)
 }
 
+export interface ConversationAnnotationRecoveryRecord {
+  readonly ref: string
+  readonly displayDraft: string
+  readonly mirrorDraft: string
+  readonly baseDraft: string
+}
+
+function exactClipboardProjection(
+  snapshot: ParentComposerInputSnapshot,
+  annotationOccurrence: ParentComposerOccurrence,
+  annotationClipboardText: string,
+): string | undefined {
+  let projected = ''
+  let cursor = 0
+  const occurrences = [...snapshot.occurrences].sort((left, right) => left.offset - right.offset)
+  for (const occurrence of occurrences) {
+    const expectedLabel = occurrence.occurrenceId === annotationOccurrence.occurrenceId
+      ? SELECTION_REFERENCE_LABEL
+      : occurrence.label
+    if (occurrence.length === undefined
+      && !snapshot.draft.startsWith(LEGACY_REFERENCE_PLACEHOLDER, occurrence.offset)
+      && expectedLabel === undefined) return
+    const range = occurrenceRange(snapshot, occurrence, expectedLabel ?? '')
+    if (range === undefined || range.start < cursor) return
+    const clipboardText = occurrence.occurrenceId === annotationOccurrence.occurrenceId
+      ? annotationClipboardText
+      : occurrence.clipboardText
+    if (clipboardText === undefined) return
+    projected += snapshot.draft.slice(cursor, range.start) + clipboardText
+    cursor = range.end
+  }
+  return projected + snapshot.draft.slice(cursor)
+}
+
+function annotationSeparator(draftTail: string): string {
+  if (draftTail.startsWith('\n\n')) return '\n\n'
+  if (draftTail.startsWith('\n')) return '\n'
+  if (draftTail.startsWith(' ')) return ' '
+  return ''
+}
+
+function baseDraftFromMirror(
+  mirrorDraft: string,
+  clipboardText: string,
+  expectedBaseDraft?: string,
+): string | undefined {
+  const separators = ['\n\n', '\n', ' ', ''] as const
+  if (expectedBaseDraft !== undefined) {
+    return separators.some(
+      separator => mirrorDraft === clipboardText + separator + expectedBaseDraft,
+    )
+      ? expectedBaseDraft
+      : undefined
+  }
+  for (const separator of separators.slice(0, -1)) {
+    const prefix = clipboardText + separator
+    if (mirrorDraft.startsWith(prefix)) return mirrorDraft.slice(prefix.length)
+  }
+  return mirrorDraft === clipboardText ? '' : undefined
+}
+
+/** Describe both the display draft and DSH's persisted clipboard projection. */
+export function conversationAnnotationRecoveryRecord(
+  snapshot: ParentComposerInputSnapshot,
+): ConversationAnnotationRecoveryRecord | undefined {
+  const occurrence = selectionOccurrences(snapshot).find(candidate => candidate.offset === 0)
+  const ref = conversationAnnotationReference(snapshot)
+  if (occurrence === undefined || ref === undefined) return
+  const range = occurrenceRange(snapshot, occurrence, SELECTION_REFERENCE_LABEL)
+  if (range === undefined || range.start !== 0) return
+  let annotations: readonly StoredConversationAnnotation[]
+  try {
+    annotations = decodeStoredSelectionReference(ref)
+  } catch {
+    return
+  }
+  const clipboardText = annotations.map(annotation => annotation.text).join('\n\n')
+  const mirrorDraft = exactClipboardProjection(snapshot, occurrence, clipboardText)
+  if (mirrorDraft === undefined) return
+  const separator = annotationSeparator(snapshot.draft.slice(range.end))
+  const mirrorPrefix = clipboardText + separator
+  if (!mirrorDraft.startsWith(mirrorPrefix)) return
+  return {
+    ref,
+    displayDraft: snapshot.draft,
+    mirrorDraft,
+    baseDraft: mirrorDraft.slice(mirrorPrefix.length),
+  }
+}
+
 /** Return the valid aggregated reference currently occupying the leading draft slot. */
 export function conversationAnnotationReference(
   snapshot: ParentComposerInputSnapshot,
 ): string | undefined {
   const occurrence = selectionOccurrences(snapshot).find(candidate => candidate.offset === 0)
-  if (occurrence === undefined || !snapshot.draft.startsWith(OBJECT_REPLACEMENT_CHARACTER)) return
+  if (occurrence === undefined
+    || !occurrenceMatchesDraft(snapshot, occurrence, SELECTION_REFERENCE_LABEL)) return
   try {
     decodeStoredSelectionReference(occurrence.ref)
     return occurrence.ref
@@ -338,10 +489,17 @@ export function conversationAnnotationReference(
 function draftWithoutOrphanedAnnotationPrefix(
   snapshot: ParentComposerInputSnapshot,
 ): string | undefined {
-  const prefix = `${OBJECT_REPLACEMENT_CHARACTER}\n\n`
-  if (!snapshot.draft.startsWith(prefix)
-    || snapshot.occurrences.some(occurrence => occurrence.offset === 0)) return
-  return snapshot.draft.slice(prefix.length)
+  if (snapshot.occurrences.some(occurrence => occurrence.offset === 0)) return
+  const legacyPrefix = `${LEGACY_REFERENCE_PLACEHOLDER}\n\n`
+  if (snapshot.draft.startsWith(legacyPrefix)) return snapshot.draft.slice(legacyPrefix.length)
+
+  const display = referenceDisplayText(SELECTION_REFERENCE_LABEL)
+  if (!snapshot.draft.startsWith(display)) return
+  let rest = snapshot.draft.slice(display.length)
+  if (rest.startsWith('\n\n')) rest = rest.slice(2)
+  else if (rest.startsWith(' ')) rest = rest.slice(1)
+  else return
+  return rest
 }
 
 /** Remove the plugin-owned prefix when rc.6 restored its draft without occurrences. */
@@ -352,10 +510,12 @@ export function removeOrphanedConversationAnnotationPlaceholder(input: ParentCom
   return true
 }
 
-/** Rehydrate a lost rc.6 occurrence only over the exact plugin-owned orphan prefix. */
+/** Rehydrate a lost occurrence over either its display draft or exact mirror projection. */
 export function restoreConversationAnnotationReference(
   input: ParentComposerInput,
   ref: string,
+  expectedMirrorDraft?: string,
+  expectedBaseDraft?: string,
 ): boolean {
   let annotations: readonly StoredConversationAnnotation[]
   try {
@@ -363,10 +523,31 @@ export function restoreConversationAnnotationReference(
   } catch {
     return false
   }
-  const draft = draftWithoutOrphanedAnnotationPrefix(input.state.getSnapshot())
+  const snapshot = input.state.getSnapshot()
+  const orphanDraft = draftWithoutOrphanedAnnotationPrefix(snapshot)
+  const clipboardText = annotations.map(annotation => annotation.text).join('\n\n')
+  const mirrorBaseDraft = expectedMirrorDraft === undefined
+    ? undefined
+    : baseDraftFromMirror(expectedMirrorDraft, clipboardText, expectedBaseDraft)
+  const draft = orphanDraft
+    ?? (expectedMirrorDraft !== undefined
+      && snapshot.occurrences.length === 0
+      && snapshot.draft === expectedMirrorDraft
+      && mirrorBaseDraft !== undefined
+      ? mirrorBaseDraft
+      : undefined)
   if (draft === undefined) return false
-  input.setDraft(draft)
-  return writeConversationAnnotations(input, input.state.getSnapshot(), annotations)
+  if (draft !== snapshot.draft) input.setDraft(draft)
+  const beforeWrite = input.state.getSnapshot()
+  if (beforeWrite.draft !== draft || beforeWrite.occurrences.length !== 0) return false
+  if (writeConversationAnnotations(input, beforeWrite, annotations)) return true
+  // Recovery must be content preserving. If DSH rejects insertion, put the
+  // exact mirror projection back rather than leaving a partially stripped draft.
+  const afterFailure = input.state.getSnapshot()
+  if (afterFailure.occurrences.length === 0 && expectedMirrorDraft !== undefined) {
+    input.setDraft(expectedMirrorDraft)
+  }
+  return false
 }
 
 function unescapeXmlText(value: string): string {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   calculateSelectionActionsPosition,
@@ -29,6 +29,22 @@ const selectedPassage: ConversationSelection = {
 }
 
 const NOOP = (): void => {}
+
+function stubVisualViewport(bounds: {
+  readonly width: number
+  readonly height: number
+  readonly offsetLeft: number
+  readonly offsetTop: number
+}): EventTarget & {
+  width: number
+  height: number
+  offsetLeft: number
+  offsetTop: number
+} {
+  const viewport = Object.assign(new EventTarget(), bounds)
+  vi.stubGlobal('visualViewport', viewport)
+  return viewport
+}
 
 afterEach(() => {
   cleanup()
@@ -59,12 +75,12 @@ describe('selection action positioning', () => {
     )).toEqual({ left: 8, top: 444 })
   })
 
-  it('keeps the compact desktop placement above the selection', () => {
+  it('places desktop actions below the selection to avoid native selection controls', () => {
     expect(calculateSelectionActionsPosition(
       selectedPassage.rect,
       { width: 300, height: 36 },
       false,
-    )).toEqual({ left: 8, top: 56 })
+    )).toEqual({ left: 8, top: 128 })
   })
 
   it('uses visual viewport offsets when checking space and clamping edges', () => {
@@ -72,24 +88,22 @@ describe('selection action positioning', () => {
       {
         ...selectedPassage.rect,
         x: 120,
-        y: 500,
+        y: 210,
         viewportWidth: 800,
         viewportHeight: 800,
       },
       { width: 300, height: 42 },
       true,
-      { width: 500, height: 400, offsetLeft: 100, offsetTop: 200 },
-    )).toEqual({ left: 108, top: 532 })
+      { width: 500, height: 300, offsetLeft: 40, offsetTop: 200 },
+    )).toEqual({ left: 48, top: 242 })
   })
 
   it('passes live visual viewport offsets to the toolbar positioner', () => {
-    vi.stubGlobal('visualViewport', {
+    stubVisualViewport({
       width: 500,
-      height: 400,
-      offsetLeft: 100,
+      height: 300,
+      offsetLeft: 40,
       offsetTop: 200,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
     })
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -109,7 +123,7 @@ describe('selection action positioning', () => {
         rect: {
           ...selectedPassage.rect,
           x: 120,
-          y: 500,
+          y: 210,
           viewportWidth: 800,
           viewportHeight: 800,
         },
@@ -121,7 +135,62 @@ describe('selection action positioning', () => {
       onDismiss={NOOP}
     />)
 
-    expect(screen.getByRole('toolbar')).toHaveStyle({ left: '108px', top: '532px' })
+    expect(screen.getByRole('toolbar')).toHaveStyle({ left: '48px', top: '242px' })
+  })
+
+  it('keeps the annotation editor and marker inside a changing visual viewport', () => {
+    const visualViewport = stubVisualViewport({
+      width: 500,
+      height: 300,
+      offsetLeft: 40,
+      offsetTop: 200,
+    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 42,
+      top: 0,
+      right: 300,
+      bottom: 42,
+      left: 0,
+      toJSON: () => ({}),
+    })
+    const view = render(<SelectionActions
+      selection={{
+        ...selectedPassage,
+        rect: {
+          ...selectedPassage.rect,
+          x: 480,
+          y: 450,
+          viewportWidth: 800,
+          viewportHeight: 800,
+        },
+      }}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={NOOP}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add annotation comment' })
+    const marker = view.container.querySelector('.dsh-side-chat-selection-marker')
+    expect(dialog).toHaveStyle({ left: '112px', top: '332px', width: '420px' })
+    expect(marker).toHaveStyle({ left: '514px', top: '438px' })
+
+    act(() => {
+      Object.assign(visualViewport, {
+        width: 400,
+        height: 150,
+        offsetLeft: 100,
+        offsetTop: 450,
+      })
+      visualViewport.dispatchEvent(new Event('scroll'))
+    })
+
+    expect(dialog).toHaveStyle({ left: '108px', top: '474px', width: '384px' })
+    expect(marker).toHaveStyle({ left: '474px', top: '454px' })
   })
 })
 
@@ -178,5 +247,72 @@ describe('selection action touch activation', () => {
     fireEvent.click(addToChat, { detail: 0 })
     expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
     expect(onAskInSideChat).not.toHaveBeenCalled()
+  })
+
+  it('fully dismisses a new annotation from Cancel', () => {
+    const onDismiss = vi.fn()
+    render(<SelectionActions
+      selection={selectedPassage}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('keeps persisted Cancel non-destructive and exposes Remove separately', () => {
+    const onDismiss = vi.fn()
+    const onRemoveAnnotation = vi.fn()
+    const view = render(<SelectionActions
+      selection={selectedPassage}
+      annotationEditor={{ initialComment: 'Existing note', dialogLabel: 'Edit annotation comment' }}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onRemoveAnnotation={onRemoveAnnotation}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+    expect(onRemoveAnnotation).not.toHaveBeenCalled()
+
+    view.unmount()
+    render(<SelectionActions
+      selection={selectedPassage}
+      annotationEditor={{ initialComment: 'Existing note', dialogLabel: 'Edit annotation comment' }}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onRemoveAnnotation={onRemoveAnnotation}
+      onDismiss={NOOP}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(onRemoveAnnotation).toHaveBeenCalledOnce()
+  })
+
+  it('submits the optional annotation comment from Save', () => {
+    const onAddToChat = vi.fn()
+    const onDismiss = vi.fn()
+    render(<SelectionActions
+      selection={selectedPassage}
+      onAddToChat={onAddToChat}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
+      target: { value: '  Keep this note  ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onAddToChat).toHaveBeenCalledWith(selectedPassage, 'Keep this note')
+    expect(onDismiss).toHaveBeenCalledOnce()
   })
 })

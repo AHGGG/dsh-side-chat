@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
@@ -26,15 +28,37 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
 
-  clean-profile:
-    name: Clean profile package
+  compatibility-matrix:
+    name: Read DSH compatibility matrix
     runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      - id: matrix
+        run: node -e "process.stdout.write('versions=' + JSON.stringify(require('./package.json').dshCompatibility.testedVersions) + '\n')" >> "$GITHUB_OUTPUT"
+
+  clean-profile:
+    name: Clean profile package (DSH ${{ matrix.dsh-version }})
+    needs: compatibility-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh-version: ${{ fromJSON(needs.compatibility-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm clean-profile:verify
+        env:
+          DSH_TEST_VERSION: ${{ matrix.dsh-version }}

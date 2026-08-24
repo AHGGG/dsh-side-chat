@@ -4,6 +4,7 @@ import {
   conversationAnnotations,
   conversationSelectionAnnotations,
   parseAnnotatedConversationPrompt,
+  removeConversationAnnotation,
   removeConversationAnnotations,
   selectionReferenceSource,
   updateConversationAnnotation,
@@ -11,6 +12,7 @@ import {
 } from '../../src/client/parent-composer/add-to-conversation.js'
 import type { ConversationSelection } from '../../src/shared/contracts.js'
 import { SessionId } from '../../src/shared/contracts.js'
+import { composerReferenceFixture } from './composer-reference-fixture.js'
 
 const selection: ConversationSelection = {
   parentSessionId: SessionId('parent-1'),
@@ -78,7 +80,55 @@ describe('Add to chat composer integration', () => {
     }])
   })
 
-  it('aggregates multiple passages in one removable annotation occurrence', () => {
+  it('keeps the current DSH @label occurrence while reserving the annotation dock row', () => {
+    const fixture = composerReferenceFixture(' Existing draft')
+
+    expect(addSelectionToConversation(fixture.input, selection, 'Current runtime')).toBe(true)
+    expect(fixture.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\n Existing draft')
+    expect(fixture.snapshot().occurrences).toEqual([expect.objectContaining({
+      occurrenceId: 1,
+      source: 'dsh-side-chat-selection',
+      offset: 0,
+      length: '@__dsh_side_chat_annotations__'.length,
+      label: '__dsh_side_chat_annotations__',
+    })])
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{
+      text: selection.text,
+      comment: 'Current runtime',
+    }])
+
+    expect(removeConversationAnnotations(fixture.input)).toBe(true)
+    expect(fixture.snapshot()).toMatchObject({ draft: ' Existing draft', occurrences: [] })
+  })
+
+  it('aggregates and updates annotations with current DSH occurrence lengths', () => {
+    const fixture = composerReferenceFixture('Question')
+    const second = { ...selection, text: 'Second passage', atSeq: 9 }
+
+    expect(addSelectionToConversation(fixture.input, selection, 'First note')).toBe(true)
+    expect(addSelectionToConversation(fixture.input, second)).toBe(true)
+    expect(fixture.snapshot().occurrences).toHaveLength(1)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([
+      { text: selection.text, comment: 'First note' },
+      { text: second.text },
+    ])
+    expect(fixture.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\nQuestion')
+
+    expect(updateConversationAnnotation(fixture.input, 0, 'Updated note')).toBe(true)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([
+      { text: selection.text, comment: 'Updated note' },
+      { text: second.text },
+    ])
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{ text: second.text }])
+    expect(fixture.snapshot().occurrences).toHaveLength(1)
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(fixture.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+    expect(removeConversationAnnotations(fixture.input)).toBe(false)
+    expect(fixture.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+  })
+
+  it('aggregates multiple passages in one removable legacy annotation occurrence', () => {
     let nextOccurrenceId = 0
     let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
       draft: 'Question', draftRev: 0, occurrences: [],
@@ -178,33 +228,11 @@ describe('Add to chat composer integration', () => {
   })
 
   it('numbers annotations and preserves optional user comments', async () => {
-    let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
-      draft: '', draftRev: 0, occurrences: [],
-    }
-    let serializedRef = ''
-    const input: ParentComposerInput = {
-      state: { getSnapshot: () => snapshot },
-      insertReference: (reference) => {
-        serializedRef = reference.ref
-        snapshot = {
-          draft: '\uFFFC',
-          draftRev: snapshot.draftRev + 1,
-          occurrences: [{ occurrenceId: 1, source: reference.source, ref: reference.ref, offset: 0 }],
-        }
-        return true
-      },
-      setDraft: (draft) => {
-        snapshot = {
-          ...snapshot,
-          draft,
-          draftRev: snapshot.draftRev + 1,
-          occurrences: draft.includes('\uFFFC') ? snapshot.occurrences : [],
-        }
-      },
-    }
+    const fixture = composerReferenceFixture('', 'legacy')
 
-    expect(addSelectionToConversation(input, selection, 'Why is this important?')).toBe(true)
-    expect(addSelectionToConversation(input, { ...selection, text: 'Second passage' })).toBe(true)
+    expect(addSelectionToConversation(fixture.input, selection, 'Why is this important?')).toBe(true)
+    expect(addSelectionToConversation(fixture.input, { ...selection, text: 'Second passage' })).toBe(true)
+    const serializedRef = fixture.snapshot().occurrences[0]?.ref ?? ''
     const serialized = await selectionReferenceSource.codec.serialize(
       serializedRef,
       new AbortController().signal,
@@ -221,7 +249,7 @@ describe('Add to chat composer integration', () => {
     })
   })
 
-  it('leaves the draft untouched when DSH refuses the reference insertion', () => {
+  it('leaves the draft untouched when DSH refuses the first reference insertion', () => {
     const setDraft = vi.fn()
     const input: ParentComposerInput = {
       state: { getSnapshot: () => ({ draft: 'Keep me', draftRev: 2, occurrences: [] }) },
@@ -231,5 +259,41 @@ describe('Add to chat composer integration', () => {
 
     expect(addSelectionToConversation(input, selection)).toBe(false)
     expect(setDraft).not.toHaveBeenCalled()
+  })
+
+  it('removes one annotation while retaining the aggregate until the last item', () => {
+    const fixture = composerReferenceFixture('Question')
+    const second = { ...selection, text: 'Second passage', atSeq: 9 }
+    expect(addSelectionToConversation(fixture.input, selection, 'First note')).toBe(true)
+    expect(addSelectionToConversation(fixture.input, second, 'Second note')).toBe(true)
+
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{
+      text: 'Second passage',
+      comment: 'Second note',
+    }])
+    expect(fixture.snapshot().occurrences).toHaveLength(1)
+    expect(fixture.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\nQuestion')
+
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(fixture.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+  })
+
+  it('keeps an existing annotation intact when its replacement insertion is refused', () => {
+    const fixture = composerReferenceFixture('Question')
+    expect(addSelectionToConversation(fixture.input, selection, 'Original note')).toBe(true)
+    const before = fixture.snapshot()
+    const input: ParentComposerInput = {
+      state: fixture.input.state,
+      insertReference: () => false,
+      setDraft: fixture.input.setDraft,
+    }
+
+    expect(addSelectionToConversation(input, { ...selection, text: 'Second passage' })).toBe(false)
+    expect(fixture.snapshot()).toEqual(before)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{
+      text: selection.text,
+      comment: 'Original note',
+    }])
   })
 })
