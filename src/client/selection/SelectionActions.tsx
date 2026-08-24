@@ -22,6 +22,8 @@ export interface SelectionActionsProps {
   readonly onMoreDetails: (selection: ConversationSelection) => void
   readonly onAskInSideChat: (selection: ConversationSelection) => void
   readonly onAnnotationEditorChange?: (open: boolean) => void
+  /** Explicit destructive action offered only while editing a persisted annotation. */
+  readonly onRemoveAnnotation?: () => void
   readonly onDismiss: () => void
 }
 
@@ -77,6 +79,7 @@ export function SelectionActions({
   onMoreDetails,
   onAskInSideChat,
   onAnnotationEditorChange,
+  onRemoveAnnotation,
   onDismiss,
 }: SelectionActionsProps) {
   const [editingAnnotation, setEditingAnnotation] = useState(annotationEditor !== undefined)
@@ -171,7 +174,7 @@ export function SelectionActions({
     setEditingAnnotation(false)
     setComment('')
     onAnnotationEditorChange?.(false)
-    if (annotationEditor !== undefined) onDismiss()
+    onDismiss()
   }
   const saveAnnotation = (): void => {
     const trimmed = comment.trim()
@@ -266,6 +269,9 @@ export function SelectionActions({
             onKeyDown={annotationKeyDown}
           />
           <div className="dsh-side-chat-selection-comment-actions">
+            {annotationEditor !== undefined && onRemoveAnnotation !== undefined && (
+              <button type="button" onClick={onRemoveAnnotation}>Remove</button>
+            )}
             <button type="button" onClick={closeEditor}>Cancel</button>
             <button type="submit" className="dsh-side-chat-selection-comment-save">Save</button>
           </div>

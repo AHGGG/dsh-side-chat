@@ -32,6 +32,7 @@ import { SessionId as sideChatSessionId } from '../../shared/contracts.js'
 import {
   addSelectionToConversation as addSelectionToParentComposer,
   conversationAnnotations,
+  removeConversationAnnotation as removeParentConversationAnnotation,
   removeConversationAnnotations as removeParentConversationAnnotations,
   updateConversationAnnotation as updateParentConversationAnnotation,
 } from '../parent-composer/add-to-conversation.js'
@@ -280,6 +281,17 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     const input = scope === undefined ? undefined : this.ctx.conversation.input.for(scope)
     if (input === undefined || !addReferencedSideChatToParentComposer(input, reference)) return false
     this.annotationPersistence.reconcile(parentSessionId, input)
+    return true
+  }
+
+  /** Remove one existing unsent annotation from the aggregated occurrence. */
+  removeConversationAnnotation(annotationIndex: number): boolean {
+    const sessionId = this.currentSessionId()
+    const input = this.currentParentInput()
+    if (sessionId === undefined
+      || input === undefined
+      || !removeParentConversationAnnotation(input, annotationIndex)) return false
+    this.annotationPersistence.reconcile(sessionId, input)
     return true
   }
 

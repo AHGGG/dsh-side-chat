@@ -170,6 +170,55 @@ describe('referenced Side Chat conversation', () => {
     expect(fixture.snapshot().occurrences[0]?.ref).toContain('One follow-up')
   })
 
+  it('removes only a legacy U+FFFC conversation reference when refreshing it', () => {
+    const existing = reference()
+    const ref = JSON.stringify(existing)
+    let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
+      draft: '\uFFFC Keep this text',
+      draftRev: 3,
+      occurrences: [{
+        occurrenceId: 7,
+        source: SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE,
+        ref,
+        offset: 0,
+      }],
+    }
+    const input: ParentComposerInput = {
+      state: { getSnapshot: () => snapshot },
+      insertReference: (nextReference, span) => {
+        if (span.draftRev !== snapshot.draftRev) return false
+        const display = `@${nextReference.label}`
+        snapshot = {
+          draft: `${display} ${snapshot.draft}`,
+          draftRev: snapshot.draftRev + 1,
+          occurrences: [{
+            occurrenceId: 8,
+            source: nextReference.source,
+            ref: nextReference.ref,
+            offset: 0,
+            length: display.length,
+          }, { ...snapshot.occurrences[0]!, offset: display.length + 1 }],
+        }
+        return true
+      },
+      setDraft: (draft) => {
+        snapshot = {
+          draft,
+          draftRev: snapshot.draftRev + 1,
+          occurrences: snapshot.occurrences.filter(occurrence => occurrence.occurrenceId !== 7),
+        }
+      },
+    }
+    const refreshed = {
+      ...existing,
+      conversation: [...existing.conversation, { role: 'user' as const, content: 'New detail' }],
+    }
+
+    expect(addReferencedSideChatToConversation(input, refreshed)).toBe(true)
+    expect(snapshot.draft).toBe('@Side Chat · Project Keep this text')
+    expect(snapshot.occurrences.map(occurrence => occurrence.occurrenceId)).toEqual([8])
+  })
+
   it('does not mutate the parent draft when insertion is refused', () => {
     const setDraft = vi.fn()
     const input: ParentComposerInput = {

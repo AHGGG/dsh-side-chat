@@ -122,6 +122,52 @@ describe('selection action touch activation', () => {
     expect(onAskInSideChat).not.toHaveBeenCalled()
   })
 
+  it('fully dismisses a new annotation from Cancel', () => {
+    const onDismiss = vi.fn()
+    render(<SelectionActions
+      selection={selectedPassage}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('keeps persisted Cancel non-destructive and exposes Remove separately', () => {
+    const onDismiss = vi.fn()
+    const onRemoveAnnotation = vi.fn()
+    const view = render(<SelectionActions
+      selection={selectedPassage}
+      annotationEditor={{ initialComment: 'Existing note', dialogLabel: 'Edit annotation comment' }}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onRemoveAnnotation={onRemoveAnnotation}
+      onDismiss={onDismiss}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+    expect(onRemoveAnnotation).not.toHaveBeenCalled()
+
+    view.unmount()
+    render(<SelectionActions
+      selection={selectedPassage}
+      annotationEditor={{ initialComment: 'Existing note', dialogLabel: 'Edit annotation comment' }}
+      onAddToChat={NOOP}
+      onMoreDetails={NOOP}
+      onAskInSideChat={NOOP}
+      onRemoveAnnotation={onRemoveAnnotation}
+      onDismiss={NOOP}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(onRemoveAnnotation).toHaveBeenCalledOnce()
+  })
+
   it('submits the optional annotation comment from Save', () => {
     const onAddToChat = vi.fn()
     const onDismiss = vi.fn()
