@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.0...v0.7.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* preserve annotations on current DSH ([a47776d](https://github.com/AHGGG/dsh-side-chat/commit/a47776d876d4ac5006c9d2982015c79dcb287cc6))
+
 ## [0.7.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.2...v0.7.0) (2026-08-24)
 
 
