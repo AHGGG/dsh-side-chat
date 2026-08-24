@@ -11,6 +11,8 @@ export interface ParentComposerOccurrence {
   readonly length?: number
   /** Insert-time display label, present in current DSH input snapshots. */
   readonly label?: string
+  /** Draft-persistence projection cached by current DSH input snapshots. */
+  readonly clipboardText?: string
 }
 
 export interface ParentComposerInputSnapshot {

@@ -17,6 +17,7 @@ interface AnnotationStorage {
 interface StoredAnnotationDraftV1 {
   readonly version: 1
   readonly draft: string
+  readonly projection?: string
   readonly ref: string
 }
 
@@ -52,6 +53,10 @@ function displayDraft(record: StoredAnnotationDraft): string {
   return record.version === 1 ? record.draft : record.displayDraft
 }
 
+function mirrorDraft(record: StoredAnnotationDraft): string | undefined {
+  return record.version === 1 ? record.projection : record.mirrorDraft
+}
+
 /** Tab-scoped recovery for drafts persisted as a reference clipboard projection. */
 export class ConversationAnnotationPersistence {
   private readonly observedSessions = new Set<string>()
@@ -71,19 +76,21 @@ export class ConversationAnnotationPersistence {
     const stored = this.read(key)
     if (stored !== undefined) {
       const exactDisplayDraft = snapshot.draft === displayDraft(stored)
-      const exactMirrorDraft = stored.version === 2 && snapshot.draft === stored.mirrorDraft
+      const storedMirrorDraft = mirrorDraft(stored)
+      const exactMirrorDraft = storedMirrorDraft !== undefined && snapshot.draft === storedMirrorDraft
       if (exactDisplayDraft || exactMirrorDraft) {
         this.observedSessions.add(key)
         const restored = restoreConversationAnnotationReference(
           input,
           stored.ref,
-          stored.version === 2 ? stored.mirrorDraft : undefined,
+          storedMirrorDraft,
           stored.version === 2 ? stored.baseDraft : undefined,
         )
         if (restored) return
-        // Keep v2 mirror text recoverable after a transient insert refusal. A
-        // malformed or stale display record is removed and sanitized instead.
-        if (exactMirrorDraft && input.state.getSnapshot().draft === stored.mirrorDraft) return
+        // A refused insertion may move an exact display record to its exact
+        // mirror. Keep either v1 or v2 storage retryable from that safe state.
+        if (storedMirrorDraft !== undefined
+          && input.state.getSnapshot().draft === storedMirrorDraft) return
         this.remove(key)
         removeOrphanedConversationAnnotationPlaceholder(input)
         return
@@ -113,13 +120,22 @@ export class ConversationAnnotationPersistence {
       const value = JSON.parse(raw) as {
         readonly version?: unknown
         readonly draft?: unknown
+        readonly projection?: unknown
         readonly displayDraft?: unknown
         readonly mirrorDraft?: unknown
         readonly baseDraft?: unknown
         readonly ref?: unknown
       }
-      if (value.version === 1 && typeof value.draft === 'string' && typeof value.ref === 'string') {
-        return { version: 1, draft: value.draft, ref: value.ref }
+      if (value.version === 1
+        && typeof value.draft === 'string'
+        && typeof value.ref === 'string'
+        && (value.projection === undefined || typeof value.projection === 'string')) {
+        return {
+          version: 1,
+          draft: value.draft,
+          ...(value.projection === undefined ? {} : { projection: value.projection }),
+          ref: value.ref,
+        }
       }
       return value.version === 2
         && typeof value.displayDraft === 'string'

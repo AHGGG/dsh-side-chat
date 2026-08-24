@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addSelectionToConversation,
+  conversationAnnotationRecoveryRecord,
   conversationAnnotations,
   removeConversationAnnotations,
   selectionReferenceSource,
@@ -147,6 +148,58 @@ describe('parent annotation refresh persistence', () => {
     expect(storage.size).toBe(1)
   })
 
+  it('migrates the v0.7.1 projection record after an upgrade', () => {
+    const original = composerReferenceFixture('Question')
+    expect(addSelectionToConversation(original.input, selection, 'Legacy stored note')).toBe(true)
+    const snapshot = original.snapshot()
+    const ref = snapshot.occurrences[0]?.ref ?? ''
+    const storage = new MemoryStorage()
+    storage.setItem('dsh-side-chat:composer-annotations:v0.7.1-upgrade', JSON.stringify({
+      version: 1,
+      draft: snapshot.draft,
+      projection: 'Selected text\n\nQuestion',
+      ref,
+    }))
+
+    const restored = composerReferenceFixture('Selected text\n\nQuestion')
+    new ConversationAnnotationPersistence(storage).reconcile(SessionId('v0.7.1-upgrade'), restored.input)
+
+    expect(restored.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\nQuestion')
+    expect(conversationAnnotations(restored.snapshot())).toEqual([{
+      text: 'Selected text',
+      comment: 'Legacy stored note',
+    }])
+    expect(storage.size).toBe(1)
+  })
+
+  it('uses every occurrence clipboard projection in the exact recovery mirror', () => {
+    const fileOccurrence: ParentComposerOccurrence = {
+      occurrenceId: 41,
+      source: 'dsh-file-reference',
+      ref: 'file-ref',
+      offset: 0,
+      length: '@file'.length,
+      label: 'file',
+      clipboardText: '@/full/path',
+    }
+    const original = composerReferenceFixture('@file Question', 'current', [fileOccurrence])
+    expect(addSelectionToConversation(original.input, selection)).toBe(true)
+
+    const record = conversationAnnotationRecoveryRecord(original.snapshot())
+    expect(record).toMatchObject({
+      mirrorDraft: 'Selected text\n\n@/full/path Question',
+      baseDraft: '@/full/path Question',
+    })
+
+    const storage = new MemoryStorage()
+    new ConversationAnnotationPersistence(storage).reconcile(SessionId('multiple-references'), original.input)
+    const restored = composerReferenceFixture(record?.mirrorDraft ?? '')
+    new ConversationAnnotationPersistence(storage).reconcile(SessionId('multiple-references'), restored.input)
+
+    expect(restored.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\n@/full/path Question')
+    expect(conversationAnnotations(restored.snapshot())).toEqual([{ text: 'Selected text' }])
+  })
+
   it('does not guess that similar ordinary text is a stored annotation', () => {
     const storage = new MemoryStorage()
     const original = composerReferenceFixture('Question')
@@ -178,6 +231,28 @@ describe('parent annotation refresh persistence', () => {
 
     const persistence = new ConversationAnnotationPersistence(storage)
     persistence.reconcile(SessionId('retry-refusal'), input)
+    expect(refused.snapshot()).toMatchObject({ draft: record.mirrorDraft, occurrences: [] })
+    expect(storage.size).toBe(1)
+  })
+
+  it('keeps a display draft retryable when reinsertion is temporarily refused', () => {
+    const storage = new MemoryStorage()
+    const original = composerReferenceFixture('Question')
+    expect(addSelectionToConversation(original.input, selection)).toBe(true)
+    new ConversationAnnotationPersistence(storage).reconcile(SessionId('display-retry-refusal'), original.input)
+    const record = JSON.parse(storage.records[0] ?? '{}') as {
+      displayDraft?: string
+      mirrorDraft?: string
+    }
+    const refused = composerReferenceFixture(record.displayDraft ?? '')
+    const input: ParentComposerInput = {
+      state: refused.input.state,
+      setDraft: refused.input.setDraft,
+      insertReference: () => false,
+    }
+
+    new ConversationAnnotationPersistence(storage).reconcile(SessionId('display-retry-refusal'), input)
+
     expect(refused.snapshot()).toMatchObject({ draft: record.mirrorDraft, occurrences: [] })
     expect(storage.size).toBe(1)
   })

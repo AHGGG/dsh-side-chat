@@ -388,6 +388,60 @@ export interface ConversationAnnotationRecoveryRecord {
   readonly baseDraft: string
 }
 
+function exactClipboardProjection(
+  snapshot: ParentComposerInputSnapshot,
+  annotationOccurrence: ParentComposerOccurrence,
+  annotationClipboardText: string,
+): string | undefined {
+  let projected = ''
+  let cursor = 0
+  const occurrences = [...snapshot.occurrences].sort((left, right) => left.offset - right.offset)
+  for (const occurrence of occurrences) {
+    const expectedLabel = occurrence.occurrenceId === annotationOccurrence.occurrenceId
+      ? SELECTION_REFERENCE_LABEL
+      : occurrence.label
+    if (occurrence.length === undefined
+      && !snapshot.draft.startsWith(LEGACY_REFERENCE_PLACEHOLDER, occurrence.offset)
+      && expectedLabel === undefined) return
+    const range = occurrenceRange(snapshot, occurrence, expectedLabel ?? '')
+    if (range === undefined || range.start < cursor) return
+    const clipboardText = occurrence.occurrenceId === annotationOccurrence.occurrenceId
+      ? annotationClipboardText
+      : occurrence.clipboardText
+    if (clipboardText === undefined) return
+    projected += snapshot.draft.slice(cursor, range.start) + clipboardText
+    cursor = range.end
+  }
+  return projected + snapshot.draft.slice(cursor)
+}
+
+function annotationSeparator(draftTail: string): string {
+  if (draftTail.startsWith('\n\n')) return '\n\n'
+  if (draftTail.startsWith('\n')) return '\n'
+  if (draftTail.startsWith(' ')) return ' '
+  return ''
+}
+
+function baseDraftFromMirror(
+  mirrorDraft: string,
+  clipboardText: string,
+  expectedBaseDraft?: string,
+): string | undefined {
+  const separators = ['\n\n', '\n', ' ', ''] as const
+  if (expectedBaseDraft !== undefined) {
+    return separators.some(
+      separator => mirrorDraft === clipboardText + separator + expectedBaseDraft,
+    )
+      ? expectedBaseDraft
+      : undefined
+  }
+  for (const separator of separators.slice(0, -1)) {
+    const prefix = clipboardText + separator
+    if (mirrorDraft.startsWith(prefix)) return mirrorDraft.slice(prefix.length)
+  }
+  return mirrorDraft === clipboardText ? '' : undefined
+}
+
 /** Describe both the display draft and DSH's persisted clipboard projection. */
 export function conversationAnnotationRecoveryRecord(
   snapshot: ParentComposerInputSnapshot,
@@ -403,13 +457,17 @@ export function conversationAnnotationRecoveryRecord(
   } catch {
     return
   }
-  const baseDraft = draftWithoutSelectionOccurrences(snapshot)
   const clipboardText = annotations.map(annotation => annotation.text).join('\n\n')
+  const mirrorDraft = exactClipboardProjection(snapshot, occurrence, clipboardText)
+  if (mirrorDraft === undefined) return
+  const separator = annotationSeparator(snapshot.draft.slice(range.end))
+  const mirrorPrefix = clipboardText + separator
+  if (!mirrorDraft.startsWith(mirrorPrefix)) return
   return {
     ref,
     displayDraft: snapshot.draft,
-    mirrorDraft: clipboardText + snapshot.draft.slice(range.end),
-    baseDraft,
+    mirrorDraft,
+    baseDraft: mirrorDraft.slice(mirrorPrefix.length),
   }
 }
 
@@ -467,14 +525,16 @@ export function restoreConversationAnnotationReference(
   }
   const snapshot = input.state.getSnapshot()
   const orphanDraft = draftWithoutOrphanedAnnotationPrefix(snapshot)
-  const mirrorDraft = `${annotations.map(annotation => annotation.text).join('\n\n')}\n\n${expectedBaseDraft ?? ''}`
+  const clipboardText = annotations.map(annotation => annotation.text).join('\n\n')
+  const mirrorBaseDraft = expectedMirrorDraft === undefined
+    ? undefined
+    : baseDraftFromMirror(expectedMirrorDraft, clipboardText, expectedBaseDraft)
   const draft = orphanDraft
     ?? (expectedMirrorDraft !== undefined
-      && expectedBaseDraft !== undefined
       && snapshot.occurrences.length === 0
       && snapshot.draft === expectedMirrorDraft
-      && expectedMirrorDraft === mirrorDraft
-      ? expectedBaseDraft
+      && mirrorBaseDraft !== undefined
+      ? mirrorBaseDraft
       : undefined)
   if (draft === undefined) return false
   if (draft !== snapshot.draft) input.setDraft(draft)
