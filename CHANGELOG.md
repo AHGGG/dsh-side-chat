@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.2...v0.7.0) (2026-08-24)
+
+
+### Features
+
+* add Side Chat references to parent conversations ([cf74d51](https://github.com/AHGGG/dsh-side-chat/commit/cf74d5178ccdb6a1a224427cfd432b6598178c13))
+* add Side Chat references to parent conversations ([79f2d79](https://github.com/AHGGG/dsh-side-chat/commit/79f2d79da3ce7a1c1c2f3bdaea0736b0c0d7776a))
+
 ## [0.6.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.6.1...v0.6.2) (2026-08-19)
 
 
