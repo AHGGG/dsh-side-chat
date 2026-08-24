@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.1...v0.7.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* complete visual viewport selection positioning ([140b984](https://github.com/AHGGG/dsh-side-chat/commit/140b98430cafa06cfefdf3bbeb817fe458ef2e27))
+* make annotation lifecycle transactional ([57b24e1](https://github.com/AHGGG/dsh-side-chat/commit/57b24e16ba9ab0aced597a541bbf210716474874))
+* make annotation lifecycle transactional ([b47e4bf](https://github.com/AHGGG/dsh-side-chat/commit/b47e4bf934674c53a0e8047dd68e430be372686d))
+* preserve annotation recovery compatibility ([9386596](https://github.com/AHGGG/dsh-side-chat/commit/93865960660974af0a2a77e5b5e185ce19b549a3))
+* respect visual viewport offsets for selection actions ([6f5c11b](https://github.com/AHGGG/dsh-side-chat/commit/6f5c11b804108e68c47fb09a10150e825a2cd8eb))
+
 ## [0.7.1](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.0...v0.7.1) (2026-08-24)
 
 
