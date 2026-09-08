@@ -1,3 +1,4 @@
+import type { Context } from '@deepseek-ai/cordis'
 import type {
   SessionBinding,
   SessionFace as CurrentSessionFace,
@@ -197,6 +198,7 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     readonly source: CurrentSessionFace
     readonly compatible: SideChatConversationFace
   }>()
+  private readonly parentInputs = new WeakMap<ParentComposerInput, ParentComposerInput>()
   private readonly annotationPersistence = new ConversationAnnotationPersistence()
   private readonly modelPreferences = new SideChatModelPreferences()
 
@@ -269,7 +271,7 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     reference: ReferencedSideChatConversation,
   ): boolean {
     const scope = this.ctx.sessions.scope(dshSessionId(parentSessionId))
-    const input = scope === undefined ? undefined : this.ctx.conversation.input.for(scope)
+    const input = scope === undefined ? undefined : this.parentInput(scope)
     if (input === undefined || !addReferencedSideChatToParentComposer(input, reference)) return false
     this.annotationPersistence.reconcile(parentSessionId, input)
     return true
@@ -378,8 +380,10 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
   private adaptedFace(source: CurrentSessionFace): SideChatConversationFace {
     const existing = this.faces.get(source.sessionId)
     if (existing?.source === source) return existing.compatible
-    const chat = this.ctx.uiConversation?.binding(source.sessionId).target('chat')
-    const pending = this.ctx.uiSession?.pendingInteractions
+    const uiConversation = this.ctx.get('uiConversation') as Rc6ClientContext['uiConversation']
+    const uiSession = this.ctx.get('uiSession') as Rc6ClientContext['uiSession']
+    const chat = uiConversation?.binding(source.sessionId).target('chat')
+    const pending = uiSession?.pendingInteractions
     const compatible = compatibleConversationFace(source, {
       ...(chat === undefined ? {} : { chat }),
       ...(pending === undefined ? {} : { pending }),
@@ -392,7 +396,23 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     const sessionId = this.currentSessionId()
     if (sessionId === undefined) return
     const scope = this.ctx.sessions.scope(dshSessionId(sessionId))
-    return scope === undefined ? undefined : this.ctx.conversation.input.for(scope)
+    return scope === undefined ? undefined : this.parentInput(scope)
+  }
+
+  private parentInput(scope: Context): ParentComposerInput | undefined {
+    const source = this.ctx.conversation.input.for(scope)
+    if (source === undefined || this.ctx.get('uiConversation') === undefined) return source
+    const existing = this.parentInputs.get(source)
+    if (existing !== undefined) return existing
+    const adapted: ParentComposerInput = {
+      referenceMode: 'lexical',
+      state: source.state,
+      setDraft: text => { source.setDraft(text) },
+      insertReference: (reference, span) => source.insertReference(reference, span),
+      replaceText: (text, span) => scope.bail(scope, 'slash/input-insert-text', { text, span }) === true,
+    }
+    this.parentInputs.set(source, adapted)
+    return adapted
   }
 
   private waitForBinding(sessionId: DshSessionId): Promise<SessionBinding> {

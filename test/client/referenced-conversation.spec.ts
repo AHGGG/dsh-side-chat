@@ -9,6 +9,7 @@ import {
   SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE,
 } from '../../src/client/parent-composer/referenced-conversation.js'
 import { SessionId } from '../../src/shared/contracts.js'
+import { lexicalComposerReferenceFixture } from './composer-reference-fixture.js'
 
 function conversationNodes(): readonly ConversationNode[] {
   return [{
@@ -168,6 +169,22 @@ describe('referenced Side Chat conversation', () => {
     expect(fixture.snapshot().draft).toBe('@Side Chat · Project Existing draft')
     expect(fixture.snapshot().occurrences).toHaveLength(1)
     expect(fixture.snapshot().occurrences[0]?.ref).toContain('One follow-up')
+  })
+
+  it('refreshes a DSH 0.1.2 Lexical conversation chip atomically', () => {
+    const fixture = lexicalComposerReferenceFixture('Existing draft')
+    const first = reference()
+    expect(addReferencedSideChatToConversation(fixture.input, first)).toBe(true)
+    const initialDraft = fixture.snapshot().draft
+
+    const refreshed = {
+      ...first,
+      conversation: [...first.conversation, { role: 'user' as const, content: 'Lexical follow-up' }],
+    }
+    expect(addReferencedSideChatToConversation(fixture.input, refreshed)).toBe(true)
+    expect(fixture.snapshot().draft).toBe(initialDraft)
+    expect(fixture.snapshot().occurrences).toHaveLength(1)
+    expect(fixture.snapshot().occurrences[0]?.ref).toContain('Lexical follow-up')
   })
 
   it('removes only a legacy U+FFFC conversation reference when refreshing it', () => {

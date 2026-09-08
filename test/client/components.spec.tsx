@@ -6,6 +6,7 @@ import { SideChatPanel } from '../../src/client/panel/SideChatPanel.js'
 import {
   annotatedUserMessageRenderer,
   mountParentConversationAnnotations,
+  ParentComposerAnnotations,
 } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
 import {
   serializeReferencedConversation,
@@ -272,6 +273,43 @@ describe('Side Chat components', () => {
       expect(quote).not.toHaveAttribute('data-hovered')
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('reserves the visible annotation width for the hidden composer occurrence', () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 150.75,
+    } as DOMRect)
+    try {
+      const { unmount } = render(
+        <div data-composer-seat="">
+          <ParentComposerAnnotations
+            input={{
+              draft: 'Selected text ',
+              draftRev: 1,
+              occurrences: [{
+                occurrenceId: 1,
+                source: 'dsh-side-chat-selection',
+                ref: JSON.stringify({ version: 2, annotations: [{ text: 'Selected text' }] }),
+                offset: 0,
+                length: 13,
+                label: '__dsh_side_chat_annotations__',
+                clipboardText: 'Selected text',
+              }],
+            }}
+            onRemove={() => {}}
+            locale="en"
+          />
+          <span data-composer-chip="dsh-side-chat-selection" />
+        </div>,
+      )
+      const seat = document.querySelector<HTMLElement>('[data-composer-seat]')
+      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('150.75px')
+
+      unmount()
+      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('')
+    } finally {
+      rect.mockRestore()
     }
   })
 

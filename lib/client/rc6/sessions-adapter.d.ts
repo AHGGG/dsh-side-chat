@@ -10,6 +10,7 @@ export declare class Rc6SideChatSessions implements SideChatClientSessions {
     private readonly ctx;
     private readonly renamed;
     private readonly faces;
+    private readonly parentInputs;
     private readonly annotationPersistence;
     private readonly modelPreferences;
     constructor(ctx: Rc6ClientContext);
@@ -49,6 +50,7 @@ export declare class Rc6SideChatSessions implements SideChatClientSessions {
     rememberSideChatModelPreference(selection: SideChatModelSelection): void;
     private adaptedFace;
     private currentParentInput;
+    private parentInput;
     private waitForBinding;
 }
 export declare function selectionDescriptor(snapshot: SideChatConversationSnapshot, anchorKey: string): {

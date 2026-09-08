@@ -3,6 +3,7 @@ import {
   draftWithoutOccurrence,
   LEGACY_REFERENCE_PLACEHOLDER,
   newlyInsertedOccurrence,
+  occurrenceEditSpan,
   occurrenceMatchesDraft,
   occurrenceRange,
   referenceDisplayText,
@@ -219,7 +220,20 @@ function draftWithoutSelectionOccurrences(snapshot: ParentComposerInputSnapshot)
 /** Remove every unsent plugin annotation while preserving the user's draft. */
 export function removeConversationAnnotations(input: ParentComposerInput): boolean {
   const snapshot = input.state.getSnapshot()
-  if (selectionOccurrences(snapshot).length === 0) return false
+  const occurrences = selectionOccurrences(snapshot)
+  if (occurrences.length === 0) return false
+  if (input.referenceMode === 'lexical' && input.replaceText !== undefined) {
+    for (const occurrenceId of occurrences.map(occurrence => occurrence.occurrenceId).reverse()) {
+      const current = input.state.getSnapshot()
+      const occurrence = current.occurrences.find(candidate => candidate.occurrenceId === occurrenceId)
+      if (occurrence === undefined) continue
+      const span = occurrenceEditSpan(input, current, occurrence, {
+        consumeFollowingSeparator: true,
+      })
+      if (span === undefined || !input.replaceText('', span)) return false
+    }
+    return selectionOccurrences(input.state.getSnapshot()).length === 0
+  }
   input.setDraft(draftWithoutSelectionOccurrences(snapshot))
   return true
 }
@@ -240,7 +254,7 @@ export const selectionReferenceSource: SelectionReferenceSource = {
   },
 }
 
-function writeConversationAnnotations(
+function writeTextConversationAnnotations(
   input: ParentComposerInput,
   before: ParentComposerInputSnapshot,
   annotations: readonly StoredConversationAnnotation[],
@@ -333,6 +347,97 @@ function writeConversationAnnotations(
     && occurrenceMatchesDraft(normalized, retained, SELECTION_REFERENCE_LABEL)
 }
 
+function writeLexicalConversationAnnotations(
+  input: ParentComposerInput,
+  before: ParentComposerInputSnapshot,
+  annotations: readonly StoredConversationAnnotation[],
+): boolean {
+  if (input.replaceText === undefined) return false
+  const existing = selectionOccurrences(before)
+  if (existing.length > 1) return false
+  const previous = existing[0]
+  if (previous !== undefined && previous.length === undefined) return false
+
+  let insertionState = before
+  let preparedGap = false
+  if (previous === undefined) {
+    // A gap inserted before the chip is unambiguously plugin-owned. DSH's
+    // automatic gap cannot otherwise be distinguished from a user's leading
+    // space when the reference is later removed.
+    if (!input.replaceText(' ', { start: 0, end: 0, draftRev: before.draftRev })) return false
+    insertionState = input.state.getSnapshot()
+    if (insertionState.draft !== ` ${before.draft}`) return false
+    preparedGap = true
+  }
+
+  const span = previous === undefined
+    ? { start: 0, end: 0, draftRev: insertionState.draftRev }
+    : occurrenceEditSpan(input, insertionState, previous)
+  if (span === undefined) return false
+
+  const ref = encodeSelectionReference(annotations)
+  const clipboardText = annotations.map(annotation => annotation.text).join('\n\n')
+  const inserted = input.insertReference({
+    source: SELECTION_REFERENCE_SOURCE,
+    ref,
+    label: SELECTION_REFERENCE_LABEL,
+    clipboardText,
+  }, span)
+  if (!inserted) {
+    if (preparedGap) {
+      const current = input.state.getSnapshot()
+      if (current.draft === ` ${before.draft}`) {
+        input.replaceText('', { start: 0, end: 1, draftRev: current.draftRev })
+      }
+    }
+    return false
+  }
+
+  const afterInsert = input.state.getSnapshot()
+  const occurrence = newlyInsertedOccurrence(
+    insertionState,
+    afterInsert,
+    SELECTION_REFERENCE_SOURCE,
+    ref,
+  )
+  const previousEnd = previous === undefined ? 0 : previous.offset + (previous.length ?? 0)
+  const previousTail = previous === undefined
+    ? insertionState.draft
+    : insertionState.draft.slice(previousEnd)
+  const automaticGap = previousTail.startsWith(' ') ? '' : ' '
+  const expectedDraft = previous === undefined
+    ? `${clipboardText}${insertionState.draft}`
+    : insertionState.draft.slice(0, previous.offset) + clipboardText + automaticGap + previousTail
+  const valid = occurrence !== undefined
+    && selectionOccurrences(afterInsert).length === 1
+    && occurrence.offset === (previous?.offset ?? 0)
+    && occurrence.label === SELECTION_REFERENCE_LABEL
+    && occurrence.clipboardText === clipboardText
+    && occurrenceMatchesDraft(afterInsert, occurrence, SELECTION_REFERENCE_LABEL)
+    && afterInsert.draft === expectedDraft
+  if (valid) return true
+
+  // Best-effort rollback for a first insertion. Replacing an existing chip is
+  // atomic and should never reach this path on a conforming DSH input facade.
+  if (previous === undefined && occurrence !== undefined) {
+    const rollback = occurrenceEditSpan(input, afterInsert, occurrence, {
+      consumeFollowingSeparator: true,
+    })
+    if (rollback !== undefined) input.replaceText('', rollback)
+  }
+  return false
+}
+
+function writeConversationAnnotations(
+  input: ParentComposerInput,
+  before: ParentComposerInputSnapshot,
+  annotations: readonly StoredConversationAnnotation[],
+): boolean {
+  return input.referenceMode === 'lexical'
+    ? writeLexicalConversationAnnotations(input, before, annotations)
+    : writeTextConversationAnnotations(input, before, annotations)
+}
+
 /** Add one passage to the parent composer's aggregated annotation occurrence. */
 export function addSelectionToConversation(
   input: ParentComposerInput,
@@ -353,10 +458,7 @@ export function removeConversationAnnotation(
   const annotations = [...storedConversationAnnotations(before)]
   if (!Number.isSafeInteger(annotationIndex) || annotations[annotationIndex] === undefined) return false
   annotations.splice(annotationIndex, 1)
-  if (annotations.length === 0) {
-    input.setDraft(draftWithoutSelectionOccurrences(before))
-    return selectionOccurrences(input.state.getSnapshot()).length === 0
-  }
+  if (annotations.length === 0) return removeConversationAnnotations(input)
   return writeConversationAnnotations(input, before, annotations)
 }
 

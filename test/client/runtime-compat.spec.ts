@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type { Rc6ClientContext } from '../../src/client/rc6/context.js'
 import { compatibleConversationFace } from '../../src/client/rc6/runtime-compat.js'
+import { Rc6SideChatSessions } from '../../src/client/rc6/sessions-adapter.js'
+import { SessionId as sideChatSessionId } from '../../src/shared/contracts.js'
 
 function observable<T>(read: () => T) {
   return {
@@ -103,6 +106,55 @@ describe('DSH client runtime compatibility', () => {
     remove()
     await face.open()
     expect(session.open).toHaveBeenCalledOnce()
+  })
+
+  it('looks up optional 0.1.2 stores without requiring Cordis injection', () => {
+    const lifecycle = {
+      queue: [],
+      running: false,
+      openState: 'open',
+      promptError: null,
+      lastAgentError: null,
+    }
+    const session = currentSession(lifecycle)
+    const chatNodeStore = { get: vi.fn(() => undefined), values: () => [] }
+    const chat = observable(() => ({
+      nodes: chatNodeStore,
+      legacy: {
+        nodes: [],
+        turnEnds: new Map(),
+        turnTimings: new Map(),
+        partial: null,
+        runningCalls: [],
+      },
+    } as unknown as ChatSnapshot))
+    const pending = observable(() => new Map())
+    const target = vi.fn(() => chat)
+    const binding = vi.fn(() => ({ target }))
+    const get = vi.fn((name: string) => name === 'uiConversation'
+      ? { binding }
+      : name === 'uiSession'
+        ? { pendingInteractions: pending }
+        : undefined)
+    const context = new Proxy({
+      get,
+      sessions: { binding: vi.fn(() => ({ session })) },
+    }, {
+      get(targetContext, property, receiver) {
+        if (property === 'uiConversation' || property === 'uiSession') {
+          throw new Error(`cannot get property "${property}" without inject`)
+        }
+        return Reflect.get(targetContext, property, receiver)
+      },
+    }) as unknown as Rc6ClientContext
+
+    const face = new Rc6SideChatSessions(context).face(sideChatSessionId('child-1'))
+
+    expect(face?.getSnapshot().chatNodes).toBe(chatNodeStore)
+    expect(get).toHaveBeenNthCalledWith(1, 'uiConversation')
+    expect(get).toHaveBeenNthCalledWith(2, 'uiSession')
+    expect(binding).toHaveBeenCalledWith(SessionId('child-1'))
+    expect(target).toHaveBeenCalledWith('chat')
   })
 
   it('retains 0.1.0/0.1.1 combined snapshots and response envelopes', async () => {

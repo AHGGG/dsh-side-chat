@@ -7,12 +7,13 @@ export interface ParentComposerOccurrence {
   readonly source: string
   readonly ref: string
   readonly offset: number
-  /** Complete inline display-text length in current DSH input snapshots. */
+  /** Occupied projection length (display text through 0.1.1, clipboard text in 0.1.2). */
   readonly length?: number
   /** Insert-time display label, present in current DSH input snapshots. */
   readonly label?: string
   /** Draft-persistence projection cached by current DSH input snapshots. */
   readonly clipboardText?: string
+  readonly appearance?: 'session' | 'file' | 'folder'
 }
 
 export interface ParentComposerInputSnapshot {
@@ -21,12 +22,22 @@ export interface ParentComposerInputSnapshot {
   readonly occurrences: readonly ParentComposerOccurrence[]
 }
 
+export interface ParentComposerSpan {
+  readonly start: number
+  readonly end: number
+  readonly draftRev: number
+}
+
 export interface ParentComposerInput {
   readonly state: {
     getSnapshot(): ParentComposerInputSnapshot
     subscribe?(listener: () => void): () => void
   }
+  /** DSH 0.1.2's Lexical editor projects each reference as one mutation coordinate. */
+  readonly referenceMode?: 'text' | 'lexical'
   setDraft(text: string): void
+  /** Atomic plain-text replacement supplied by Side Chat's scoped input-event adapter. */
+  replaceText?(text: string, span: ParentComposerSpan): boolean
   insertReference(
     reference: {
       readonly source: string
@@ -35,7 +46,7 @@ export interface ParentComposerInput {
       readonly appearance?: 'session' | 'file' | 'folder'
       readonly clipboardText: string
     },
-    span: { readonly start: number; readonly end: number; readonly draftRev: number },
+    span: ParentComposerSpan,
   ): boolean
 }
 
@@ -101,7 +112,41 @@ export function occurrenceMatchesDraft(
   const range = occurrenceRange(snapshot, occurrence, expectedLabel)
   if (range === undefined) return false
   const text = snapshot.draft.slice(range.start, range.end)
-  return text === LEGACY_REFERENCE_PLACEHOLDER || text === referenceDisplayText(expectedLabel)
+  if (text === LEGACY_REFERENCE_PLACEHOLDER || text === referenceDisplayText(expectedLabel)) return true
+  return occurrence.label === expectedLabel
+    && occurrence.clipboardText !== undefined
+    && text === occurrence.clipboardText
+}
+
+/** Convert one published occurrence range to the host input machine's mutation coordinates. */
+export function occurrenceEditSpan(
+  input: ParentComposerInput,
+  snapshot: ParentComposerInputSnapshot,
+  occurrence: ParentComposerOccurrence,
+  options: { readonly consumeFollowingSeparator?: boolean } = {},
+): ParentComposerSpan | undefined {
+  const range = occurrenceRange(snapshot, occurrence, occurrence.label ?? '')
+  if (range === undefined) return
+  let start = range.start
+  let end = range.end
+
+  if (input.referenceMode === 'lexical') {
+    if (occurrence.length === undefined) return
+    start = occurrence.offset
+    for (const candidate of [...snapshot.occurrences].sort((left, right) => left.offset - right.offset)) {
+      if (candidate.occurrenceId === occurrence.occurrenceId) break
+      if (candidate.offset > occurrence.offset || candidate.length === undefined) return
+      start -= candidate.length - 1
+    }
+    end = start + 1
+  }
+
+  if (options.consumeFollowingSeparator === true) {
+    const tail = snapshot.draft.slice(range.end)
+    if (tail.startsWith('\n\n')) end += 2
+    else if (tail.startsWith('\n') || tail.startsWith(' ')) end += 1
+  }
+  return { start, end, draftRev: snapshot.draftRev }
 }
 
 /** Find the exact occurrence minted by one synchronous insertReference call. */

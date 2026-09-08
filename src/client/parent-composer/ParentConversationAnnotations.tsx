@@ -1,4 +1,4 @@
-import { createElement, type ElementType, type ReactNode } from 'react'
+import { createElement, type ElementType, type ReactNode, useLayoutEffect, useRef } from 'react'
 import type { Rc6ClientContext } from '../rc6/context.js'
 import { SIDE_CHAT_MESSAGES } from '../panel/messages.js'
 import { SelectionQuote } from '../panel/SelectionQuote.js'
@@ -50,6 +50,8 @@ function currentLocale(): Locale {
   return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
 }
 
+const ANNOTATION_CHIP_WIDTH_PROPERTY = '--dsh-side-chat-parent-annotation-width'
+
 /** The interactive annotation capsule occupying the reserved first composer row. */
 export function ParentComposerAnnotations({
   input,
@@ -61,9 +63,33 @@ export function ParentComposerAnnotations({
   readonly locale?: Locale
 }) {
   const annotations = conversationAnnotations(input)
+  const dockRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const dock = dockRef.current
+    const seat = dock?.closest<HTMLElement>('[data-composer-seat]')
+    const chip = dock?.querySelector<HTMLElement>('.dsh-side-chat-quote-chip')
+    if (seat === undefined || chip === undefined || seat === null || chip === null) return
+
+    // The durable host reference stays in Lexical's document flow. Match its
+    // occupied width to this visible overlay so the caret starts at the edge
+    // users see instead of after the longer internal serialization label.
+    const syncWidth = (): void => {
+      const width = chip.getBoundingClientRect().width
+      if (width > 0) seat.style.setProperty(ANNOTATION_CHIP_WIDTH_PROPERTY, `${String(width)}px`)
+    }
+    syncWidth()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncWidth)
+    observer?.observe(chip)
+    return () => {
+      observer?.disconnect()
+      seat.style.removeProperty(ANNOTATION_CHIP_WIDTH_PROPERTY)
+    }
+  }, [annotations.length, locale])
+
   if (annotations.length === 0) return null
   return (
-    <div className="dsh-side-chat-parent-annotation-dock">
+    <div ref={dockRef} className="dsh-side-chat-parent-annotation-dock">
       <SelectionQuote
         selections={annotations}
         messages={SIDE_CHAT_MESSAGES[locale]}

@@ -14,7 +14,10 @@ import {
   updateConversationAnnotation,
 } from '../../src/client/parent-composer/add-to-conversation.js'
 import { Rc6SideChatOverlay } from '../../src/client/rc6/Rc6SideChatOverlay.js'
-import { composerReferenceFixture } from './composer-reference-fixture.js'
+import {
+  composerReferenceFixture,
+  lexicalComposerReferenceFixture,
+} from './composer-reference-fixture.js'
 import type { Rc6SideChatSessions } from '../../src/client/rc6/sessions-adapter.js'
 import { SideChatController } from '../../src/client/side-chat-controller.js'
 import type { ConversationSelection, SideChatRemote } from '../../src/shared/contracts.js'
@@ -260,6 +263,53 @@ describe('rc.6 Side Chat overlay selection lifecycle', () => {
     expect(screen.queryByRole('complementary', { name: 'Side Chat' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add to chat' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveFocus()
+  })
+
+  it('saves an annotation through the DSH 0.1.2 Lexical composer', async () => {
+    captureMocks.capture.mockResolvedValue(selectedPassage)
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+    const composer = lexicalComposerReferenceFixture()
+    const notify = vi.fn()
+    const sessions = {
+      subscribeList: () => () => {},
+      subscribeConversationInput: composer.input.state.subscribe,
+      currentConversationInputSnapshot: composer.input.state.getSnapshot,
+      currentSessionId: () => SessionId('parent-1'),
+      face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => conversationAnnotations(composer.snapshot()).length + 1,
+      addSelectionToConversation: (selection: ConversationSelection, comment?: string) =>
+        addSelectionToConversation(composer.input, selection, comment),
+      reconcileConversationAnnotationPersistence: vi.fn(),
+      notify,
+    }
+    const controller = new SideChatController(
+      {} as SideChatRemote,
+      sessions as unknown as SideChatClientSessions,
+    )
+
+    render(<>
+      <div data-chat-flow />
+      <div data-composer-seat><textarea /></div>
+      <Rc6SideChatOverlay
+        controller={controller}
+        sessions={sessions as unknown as Rc6SideChatSessions}
+      />
+    </>)
+
+    fireEvent.mouseUp(document.body)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
+      target: { value: 'My Lexical note' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(conversationAnnotations(composer.snapshot())).toEqual([{
+      text: 'Selected text',
+      comment: 'My Lexical note',
+    }])
+    expect(composer.snapshot().occurrences).toHaveLength(1)
+    expect(notify).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: 'Add annotation comment' })).not.toBeInTheDocument()
   })
 
   it('adds the settled Side Chat history to the parent composer from the header', async () => {
