@@ -2,18 +2,27 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationSnapshot, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
 import { SideChatPanel } from '../../src/client/panel/SideChatPanel.js'
 import {
   annotatedUserMessageRenderer,
   mountParentConversationAnnotations,
+  ParentComposerAnnotations,
 } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
 import {
   serializeReferencedConversation,
   type ReferencedSideChatConversation,
 } from '../../src/client/parent-composer/referenced-conversation.js'
 import { ArchivedConversation } from '../../src/client/rc6/ArchivedConversation.js'
+import type {
+  SideChatConversationFace,
+  SideChatConversationSnapshot,
+} from '../../src/client/rc6/runtime-compat.js'
 import { SelectionActions } from '../../src/client/selection/SelectionActions.js'
+
+// Fixture aliases keep the historical test vocabulary while targeting the
+// plugin's version-neutral client contract.
+type ConversationSnapshot = SideChatConversationSnapshot
+type SessionFace = SideChatConversationFace
 import type { SideChatController } from '../../src/client/side-chat-controller.js'
 import type { ConversationSelection, SideChatState } from '../../src/shared/contracts.js'
 import { SessionId } from '../../src/shared/contracts.js'
@@ -264,6 +273,43 @@ describe('Side Chat components', () => {
       expect(quote).not.toHaveAttribute('data-hovered')
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('reserves the visible annotation width for the hidden composer occurrence', () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 150.75,
+    } as DOMRect)
+    try {
+      const { unmount } = render(
+        <div data-composer-seat="">
+          <ParentComposerAnnotations
+            input={{
+              draft: 'Selected text ',
+              draftRev: 1,
+              occurrences: [{
+                occurrenceId: 1,
+                source: 'dsh-side-chat-selection',
+                ref: JSON.stringify({ version: 2, annotations: [{ text: 'Selected text' }] }),
+                offset: 0,
+                length: 13,
+                label: '__dsh_side_chat_annotations__',
+                clipboardText: 'Selected text',
+              }],
+            }}
+            onRemove={() => {}}
+            locale="en"
+          />
+          <span data-composer-chip="dsh-side-chat-selection" />
+        </div>,
+      )
+      const seat = document.querySelector<HTMLElement>('[data-composer-seat]')
+      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('150.75px')
+
+      unmount()
+      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('')
+    } finally {
+      rect.mockRestore()
     }
   })
 
@@ -963,18 +1009,19 @@ describe('Side Chat components', () => {
       pending: [{
         kind: 'approval',
         key: 'approval:1',
-        payload: { toolName: 'Edit', reason: 'Modify one source file' },
+        toolName: 'Edit',
+        reason: 'Modify one source file',
+        respond: vi.fn(),
       }, {
         kind: 'question',
         key: 'question:1',
-        payload: {
-          questions: [{
-            id: 'scope',
-            header: 'Scope',
-            question: 'Which files?',
-            options: [{ label: 'Source only', description: 'Skip generated files' }, { label: 'All files' }],
-          }],
-        },
+        questions: [{
+          id: 'scope',
+          header: 'Scope',
+          question: 'Which files?',
+          options: [{ label: 'Source only', description: 'Skip generated files' }, { label: 'All files' }],
+        }],
+        respond: vi.fn(),
       }],
       queue: [],
       runningCalls: [],

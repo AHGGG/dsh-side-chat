@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { SessionModels } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import type {
+  ModelDirectory,
+  ModelDirectoryState,
+} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SideChatModelSelect } from '../../src/client/panel/SideChatModelSelect.js'
 
-const catalog: SessionModels = {
+const catalog = {
   current: { provider: 'openai', model: 'o3', reasoningEffort: 'medium' },
   routable: true,
   groups: [{
@@ -31,7 +33,7 @@ const catalog: SessionModels = {
     }],
   }],
   failures: [],
-}
+} satisfies Omit<ModelDirectoryState, 'error' | 'status'>
 
 function modelDirectory(): ModelDirectory {
   const state = {

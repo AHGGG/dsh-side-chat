@@ -12,7 +12,10 @@ import {
 } from '../../src/client/parent-composer/add-to-conversation.js'
 import type { ConversationSelection } from '../../src/shared/contracts.js'
 import { SessionId } from '../../src/shared/contracts.js'
-import { composerReferenceFixture } from './composer-reference-fixture.js'
+import {
+  composerReferenceFixture,
+  lexicalComposerReferenceFixture,
+} from './composer-reference-fixture.js'
 
 const selection: ConversationSelection = {
   parentSessionId: SessionId('parent-1'),
@@ -126,6 +129,62 @@ describe('Add to chat composer integration', () => {
     expect(fixture.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
     expect(removeConversationAnnotations(fixture.input)).toBe(false)
     expect(fixture.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+  })
+
+  it('keeps a DSH 0.1.2 Lexical reference through add, update, and removal', () => {
+    const fixture = lexicalComposerReferenceFixture(' Existing draft')
+    const second = { ...selection, text: 'Second passage', atSeq: 9 }
+
+    expect(addSelectionToConversation(fixture.input, selection, 'Initial note')).toBe(true)
+    expect(fixture.snapshot().draft).toBe(`${selection.text}  Existing draft`)
+    expect(fixture.snapshot().occurrences).toEqual([expect.objectContaining({
+      source: 'dsh-side-chat-selection',
+      offset: 0,
+      length: selection.text.length,
+      clipboardText: selection.text,
+    })])
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{
+      text: selection.text,
+      comment: 'Initial note',
+    }])
+
+    expect(addSelectionToConversation(fixture.input, second)).toBe(true)
+    expect(fixture.snapshot().occurrences).toHaveLength(1)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([
+      { text: selection.text, comment: 'Initial note' },
+      { text: second.text },
+    ])
+    expect(updateConversationAnnotation(fixture.input, 0, 'Revised note')).toBe(true)
+    expect(conversationAnnotations(fixture.snapshot())[0]).toEqual({
+      text: selection.text,
+      comment: 'Revised note',
+    })
+
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(conversationAnnotations(fixture.snapshot())).toEqual([{ text: second.text }])
+    expect(removeConversationAnnotation(fixture.input, 0)).toBe(true)
+    expect(fixture.snapshot()).toMatchObject({ draft: ' Existing draft', occurrences: [] })
+  })
+
+  it('preserves other DSH 0.1.2 reference nodes when an annotation is removed', () => {
+    const fixture = lexicalComposerReferenceFixture('Question')
+    expect(fixture.input.insertReference({
+      source: 'files',
+      ref: 'README.md',
+      label: 'README.md',
+      appearance: 'file',
+      clipboardText: '@README.md',
+    }, { start: 0, end: 0, draftRev: 0 })).toBe(true)
+    const before = fixture.snapshot()
+
+    expect(addSelectionToConversation(fixture.input, selection)).toBe(true)
+    expect(fixture.snapshot().occurrences.map(occurrence => occurrence.source)).toEqual([
+      'dsh-side-chat-selection',
+      'files',
+    ])
+    expect(removeConversationAnnotations(fixture.input)).toBe(true)
+    expect(fixture.snapshot().draft).toBe(before.draft)
+    expect(fixture.snapshot().occurrences).toEqual(before.occurrences)
   })
 
   it('aggregates multiple passages in one removable legacy annotation occurrence', () => {

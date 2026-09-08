@@ -52,12 +52,17 @@ for (const name of packageNames) {
   }
 }
 
-const oldestVersion = testedVersions[0]
-const nextTestedVersions = targetVersion === oldestVersion
-  ? [oldestVersion]
-  : [oldestVersion, targetVersion]
+const nextTestedVersions = testedVersions.includes(targetVersion)
+  ? [...testedVersions]
+  : [...testedVersions, targetVersion]
 const supportedRange = nextTestedVersions.join(' || ')
 manifest.dshCompatibility.testedVersions = nextTestedVersions
+manifest.dsh ??= {}
+manifest.dsh.compatibility = {
+  ...manifest.dsh.compatibility,
+  dsh: supportedRange,
+  dshReleases: Object.fromEntries(nextTestedVersions.map(version => [version, 'compatible'])),
+}
 for (const name of dshPeerNames) manifest.peerDependencies[name] = supportedRange
 for (const name of dshDevNames) manifest.devDependencies[name] = targetVersion
 

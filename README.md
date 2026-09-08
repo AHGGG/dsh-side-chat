@@ -8,10 +8,10 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 ## Install
 
-Install DSH rc.7 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
+Install DSH 0.1.2-rc.1 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.0-rc.7
+npm install --global @deepseek-ai/dsh@0.1.2-rc.1
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
@@ -27,7 +27,7 @@ Open the URL printed by DSH. The plugin loads automatically in the Web client.
 
 ### Local linked development
 
-When `dsh plugin --profile web list` shows the plugin coming from a `link:` workspace, DSH loads the Git-ignored `lib/client.js`, not `src/`. Rebuild after switching branches or changing client source, then restart the `dsh web` process:
+When `dsh plugin --profile web list` shows the plugin coming from a `link:` workspace, DSH loads the committed `lib/client.js`, not `src/`. Rebuild after switching branches or changing client source, then restart the `dsh web` process:
 
 ```powershell
 pnpm install --frozen-lockfile

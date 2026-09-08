@@ -687,7 +687,7 @@
 }
 .dsh-side-chat-quote-chip .dsh-side-chat-quote-remove {
   display: grid;
-  width: 0;
+  width: 30px;
   height: 34px;
   min-height: 34px;
   box-sizing: border-box;
@@ -705,11 +705,10 @@
   line-height: 1;
   opacity: 0;
   pointer-events: none;
-  transition: width 120ms ease, margin-left 120ms ease, opacity 100ms ease, background-color 100ms ease;
+  transition: opacity 100ms ease, background-color 100ms ease;
 }
 .dsh-side-chat-quote:hover .dsh-side-chat-quote-remove,
 .dsh-side-chat-quote:focus-within .dsh-side-chat-quote-remove {
-  width: 30px;
   opacity: 1;
   pointer-events: auto;
 }
@@ -794,7 +793,11 @@
 
 /* The DSH occurrence remains the durable serialization carrier, while this
    plugin-owned capsule supplies the visible and interactive projection. */
+[data-composer-seat] [data-composer-chip="dsh-side-chat-selection"],
 [data-composer-seat] [data-decoration="chip"][title="__dsh_side_chat_annotations__"] {
+  display: inline-block;
+  width: var(--dsh-side-chat-parent-annotation-width, auto);
+  box-sizing: border-box;
   visibility: hidden;
 }
 .dsh-side-chat-parent-annotation-dock {

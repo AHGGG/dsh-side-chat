@@ -8,6 +8,29 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'dsh-side-chat-clean-profile-'))
 const artifacts = join(temporaryRoot, 'artifacts')
 const dshPackagePrefix = '@deepseek-ai/dsh-'
+// Packages that existed only in the retained monolithic-client trains and are
+// therefore absent from a lockfile generated against split-client DSH.
+const legacyDshPackageNames = [
+  '@deepseek-ai/dsh-client-locale',
+  '@deepseek-ai/dsh-client-runtime',
+  '@deepseek-ai/dsh-client-ui-commands',
+  '@deepseek-ai/dsh-client-ui-settings',
+  '@deepseek-ai/dsh-cordis-host-runner',
+  '@deepseek-ai/dsh-goal',
+  '@deepseek-ai/dsh-host-apiproxy',
+  '@deepseek-ai/dsh-host-directory-picker',
+  '@deepseek-ai/dsh-host-plugin-inventory',
+  '@deepseek-ai/dsh-host-webserver',
+  '@deepseek-ai/dsh-llm-retry',
+  '@deepseek-ai/dsh-message-feedback',
+  '@deepseek-ai/dsh-permission-presets',
+  '@deepseek-ai/dsh-plan-mode',
+  '@deepseek-ai/dsh-session-reference',
+  '@deepseek-ai/dsh-session-stats',
+  '@deepseek-ai/dsh-shell',
+  '@deepseek-ai/dsh-subprocess',
+  '@deepseek-ai/dsh-token-meter',
+]
 const npmCommand = process.platform === 'win32'
   ? { file: process.env.ComSpec ?? 'cmd.exe', prefix: ['/d', '/s', '/c', 'npm'] }
   : { file: 'npm', prefix: [] }
@@ -41,6 +64,17 @@ try {
   }
 
   const supportedRange = declaredVersions.join(' || ')
+  const storeCompatibility = sourceManifest.dsh?.compatibility
+  if (storeCompatibility?.dsh !== supportedRange) {
+    throw new Error(`dsh.compatibility.dsh must match tested versions: ${supportedRange}`)
+  }
+  const releaseEntries = Object.entries(storeCompatibility.dshReleases ?? {})
+  if (releaseEntries.length !== declaredVersions.length
+    || releaseEntries.some(([version, status]) =>
+      !declaredVersions.includes(version) || status !== 'compatible')) {
+    throw new Error('dsh.compatibility.dshReleases must mark every tested version compatible')
+  }
+
   const dshPeers = Object.entries(sourceManifest.peerDependencies ?? {})
     .filter(([name]) => name.startsWith(dshPackagePrefix))
   if (dshPeers.length === 0) throw new Error('package manifest does not declare DSH peer dependencies')
@@ -67,10 +101,11 @@ try {
   const versionsToTest = requestedVersion === undefined ? declaredVersions : [requestedVersion]
 
   const lockfile = await readFile(join(root, 'pnpm-lock.yaml'), 'utf8')
-  const dshPackageNames = [...new Set(
-    [...lockfile.matchAll(/^  '(@deepseek-ai\/dsh-[^@']+)@[^']+':$/gm)]
+  const dshPackageNames = [...new Set([
+    ...legacyDshPackageNames,
+    ...[...lockfile.matchAll(/^  '(@deepseek-ai\/dsh-[^@']+)@[^']+':$/gm)]
       .map(([, name]) => name),
-  )]
+  ])]
   if (dshPackageNames.length === 0) throw new Error('workspace lockfile does not contain DSH packages')
 
   const probe = [

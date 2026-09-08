@@ -1,6 +1,13 @@
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  AssistantBlock,
+  ConversationNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '../../shared/contracts.js'
-import { draftWithoutOccurrence } from './composer-reference.js'
+import {
+  draftWithoutOccurrence,
+  newlyInsertedOccurrence,
+  occurrenceEditSpan,
+} from './composer-reference.js'
 import type {
   ParentComposerInput,
   ParentComposerInputSnapshot,
@@ -48,7 +55,7 @@ function visibleContentText(content: readonly unknown[]): string {
 
 function assistantText(node: Extract<ConversationNode, { kind: 'assistant' }>): string {
   return node.blocks
-    .flatMap(block => block.kind === 'text' ? [block.text] : [])
+    .flatMap((block: AssistantBlock) => block.kind === 'text' ? [block.text] : [])
     .join('\n')
     .trim()
 }
@@ -190,6 +197,13 @@ function removeOccurrence(input: ParentComposerInput, occurrenceId: number): voi
   } catch {
     return
   }
+  if (input.referenceMode === 'lexical' && input.replaceText !== undefined) {
+    const span = occurrenceEditSpan(input, snapshot, occurrence, {
+      consumeFollowingSeparator: true,
+    })
+    if (span !== undefined) input.replaceText('', span)
+    return
+  }
   const draft = draftWithoutOccurrence(snapshot, occurrence, title, { consumeAdjacentSpace: true })
   if (draft !== undefined) input.setDraft(draft)
 }
@@ -205,18 +219,32 @@ export function addReferencedSideChatToConversation(
   const encoded = encodeReferencedConversation(reference)
   if (existing.some(occurrence => occurrence.ref === encoded)) return true
 
+  const target = input.referenceMode === 'lexical' ? existing[0] : undefined
+  const span = target === undefined
+    ? { start: 0, end: 0, draftRev: before.draftRev }
+    : occurrenceEditSpan(input, before, target)
+  if (span === undefined) return false
   const inserted = input.insertReference({
     source: SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE,
     ref: encoded,
     label: reference.title,
     appearance: 'session',
     clipboardText: `@${reference.title}`,
-  }, {
-    start: 0,
-    end: 0,
-    draftRev: before.draftRev,
-  })
+  }, span)
   if (!inserted) return false
+
+  if (input.referenceMode === 'lexical') {
+    const after = input.state.getSnapshot()
+    const occurrence = newlyInsertedOccurrence(
+      before,
+      after,
+      SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE,
+      encoded,
+    )
+    if (occurrence === undefined) return false
+    for (const duplicate of existing.slice(1)) removeOccurrence(input, duplicate.occurrenceId)
+    return matchingOccurrences(input.state.getSnapshot(), reference).length === 1
+  }
 
   for (const occurrence of existing) removeOccurrence(input, occurrence.occurrenceId)
   return true

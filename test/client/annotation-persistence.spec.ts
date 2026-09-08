@@ -11,7 +11,10 @@ import {
 import { ConversationAnnotationPersistence } from '../../src/client/parent-composer/annotation-persistence.js'
 import type { ConversationSelection } from '../../src/shared/contracts.js'
 import { SessionId } from '../../src/shared/contracts.js'
-import { composerReferenceFixture } from './composer-reference-fixture.js'
+import {
+  composerReferenceFixture,
+  lexicalComposerReferenceFixture,
+} from './composer-reference-fixture.js'
 
 const selection: ConversationSelection = {
   parentSessionId: SessionId('parent-1'),
@@ -146,6 +149,40 @@ describe('parent annotation refresh persistence', () => {
       comment: 'Current note',
     }])
     expect(storage.size).toBe(1)
+  })
+
+  it('rehydrates a DSH 0.1.2 Lexical reference from its clipboard projection', () => {
+    const storage = new MemoryStorage()
+    const beforeReload = lexicalComposerReferenceFixture('Question')
+    expect(addSelectionToConversation(beforeReload.input, selection, 'Lexical note')).toBe(true)
+    new ConversationAnnotationPersistence(storage)
+      .reconcile(SessionId('parent-lexical-refresh'), beforeReload.input)
+
+    const record = JSON.parse(storage.records[0] ?? '{}') as {
+      displayDraft?: string
+      mirrorDraft?: string
+      baseDraft?: string
+    }
+    expect(record).toMatchObject({
+      displayDraft: 'Selected text Question',
+      mirrorDraft: 'Selected text Question',
+      baseDraft: 'Question',
+    })
+
+    const afterReload = lexicalComposerReferenceFixture()
+    const persistence = new ConversationAnnotationPersistence(storage)
+    persistence.reconcile(SessionId('parent-lexical-refresh'), afterReload.input)
+    afterReload.input.setDraft(record.mirrorDraft ?? '')
+    persistence.reconcile(SessionId('parent-lexical-refresh'), afterReload.input)
+
+    expect(afterReload.snapshot().draft).toBe('Selected text Question')
+    expect(afterReload.snapshot().occurrences).toHaveLength(1)
+    expect(conversationAnnotations(afterReload.snapshot())).toEqual([{
+      text: 'Selected text',
+      comment: 'Lexical note',
+    }])
+    expect(removeConversationAnnotations(afterReload.input)).toBe(true)
+    expect(afterReload.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
   })
 
   it('migrates the v0.7.1 projection record after an upgrade', () => {

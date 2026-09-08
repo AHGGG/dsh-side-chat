@@ -1,9 +1,4 @@
 import { useState, type ReactNode } from 'react'
-import type {
-  ConversationNode,
-  RunningToolCall,
-  ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContentBlock } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   CodeBlock,
@@ -25,6 +20,18 @@ import {
   type SearchBlockProps,
   type WebBlockProps,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  DIFF_LABELS,
+  READ_LABELS,
+  SEARCH_LABELS,
+  TERMINAL_LABELS,
+  WEB_LABELS,
+} from './primitive-labels.js'
+import type {
+  ConversationNode,
+  RunningToolCall,
+  ToolCallBlock,
+} from './runtime-compat.js'
 
 type ToolResultNode = Extract<ConversationNode, { kind: 'tool-result' }>
 
@@ -308,7 +315,7 @@ function validSearchCard(resultView: unknown): SearchBlockProps | null {
   if (result['shape'] === 'paths') {
     const paths = result['paths']
     return Array.isArray(paths) && paths.every((path): path is string => typeof path === 'string')
-      ? { kind: 'paths', paths, truncated, total }
+      ? { kind: 'paths', paths, truncated, total, labels: SEARCH_LABELS }
       : null
   }
   if (result['shape'] !== 'matches' || !Array.isArray(result['files'])) return null
@@ -328,7 +335,7 @@ function validSearchCard(resultView: unknown): SearchBlockProps | null {
     }
     files.push({ path, matches })
   }
-  return { kind: 'matches', files, truncated, total }
+  return { kind: 'matches', files, truncated, total, labels: SEARCH_LABELS }
 }
 
 function validDiffs(view: unknown): DiffHunk[] | null {
@@ -354,7 +361,9 @@ function validWebCard(view: unknown): WebBlockProps | null {
   if (result['kind'] === 'fetch') {
     const url = stringValue(result['url'])
     const statusCode = numberValue(result['statusCode'])
-    return url === undefined || statusCode === undefined ? null : { kind: 'fetch', url, statusCode, truncated }
+    return url === undefined || statusCode === undefined
+      ? null
+      : { kind: 'fetch', url, statusCode, truncated, labels: WEB_LABELS }
   }
   if (result['kind'] !== 'search' || !Array.isArray(result['sources'])) return null
   const sources: Array<{ url: string; title?: string; snippet?: string; publishedAt?: string }> = []
@@ -373,7 +382,13 @@ function validWebCard(view: unknown): WebBlockProps | null {
     })
   }
   const answer = stringValue(result['answer'])
-  return { kind: 'search', sources, truncated, ...(answer === undefined ? {} : { answer }) }
+  return {
+    kind: 'search',
+    sources,
+    truncated,
+    labels: WEB_LABELS,
+    ...(answer === undefined ? {} : { answer }),
+  }
 }
 
 function genericBody(variant: ToolVariant, argsRaw: string): string | null {
@@ -480,14 +495,15 @@ export function ToolCard({
                   running={terminal.running}
                   maxLines={Infinity}
                   className="dsh-side-chat-tool-terminal"
+                  labels={TERMINAL_LABELS}
                 />
               )
             : read !== null
-              ? <ReadBlock {...read} maxLines={8} className="dsh-side-chat-tool-read" />
+              ? <ReadBlock {...read} labels={READ_LABELS} maxLines={8} className="dsh-side-chat-tool-read" />
               : search !== null
                 ? <SearchBlock {...search} maxLines={8} className="dsh-side-chat-tool-search" />
                 : diffs !== null
-                  ? <DiffBlock diffs={diffs} maxLines={8} className="dsh-side-chat-tool-diff" />
+                  ? <DiffBlock diffs={diffs} labels={DIFF_LABELS} maxLines={8} className="dsh-side-chat-tool-diff" />
                   : web !== null
                     ? <WebBlock {...web} className="dsh-side-chat-tool-web" />
                     : code !== undefined
@@ -525,6 +541,10 @@ export function ToolBlockCard({ block, cwd }: {
   readonly block: ToolCallBlock
   readonly cwd?: string | undefined
 }) {
+  const presentation = block as ToolCallBlock & {
+    readonly callView?: unknown
+    readonly resultView?: unknown
+  }
   const settled = 'kind' in block
   const output = settled ? toolOutputText(block.content) : undefined
   const state = settled ? resultState(block, output ?? '') : 'running'
@@ -538,8 +558,8 @@ export function ToolBlockCard({ block, cwd }: {
         argsRaw={argsRaw}
         state={state}
         output={output}
-        callView={block.callView}
-        resultView={settled ? block.resultView : null}
+        callView={presentation.callView}
+        resultView={settled ? presentation.resultView : null}
         cwd={cwd}
       />
       {block.subCalls.length > 0 && (

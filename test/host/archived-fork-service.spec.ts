@@ -32,6 +32,7 @@ function deferred<T>() {
 interface FakeCreateInput {
   readonly sessionId: ReturnType<typeof dshSessionId>
   readonly seed: readonly SessionEvent[]
+  readonly inheritedEventCount?: number
   readonly meta: Record<string, unknown>
   readonly agentOptions: Record<string, unknown>
   readonly setup?: (ctx: Context) => void
@@ -72,25 +73,29 @@ class FakeArchivedRuntime {
   createInput: FakeCreateInput | undefined
   parentRequestConfig: { provider: string; model: string; reasoningEffort?: string } | undefined
   parentLive = true
+  splitApi = false
   archiveGate: Promise<void> | undefined
   archiveEntered: (() => void) | undefined
 
   readonly context = {
     agents: {
-      get: (id: ReturnType<typeof dshSessionId>) => this.parentLive && id === dshSessionId('parent-1')
-        ? {
-            id,
-            ctx: this.parentCtx,
-            options: this.parentOptions,
-            session: {
-              events: PARENT_EVENTS,
-              header: this.parentHeader,
-              requestHeader: () => this.parentRequestConfig === undefined
-                ? undefined
-                : { config: this.parentRequestConfig },
-            },
-          }
-        : undefined,
+      get: (id: ReturnType<typeof dshSessionId>) => {
+        if (!this.parentLive || id !== dshSessionId('parent-1')) return undefined
+        const common = {
+          header: this.parentHeader,
+          requestHeader: () => this.parentRequestConfig === undefined
+            ? undefined
+            : { config: this.parentRequestConfig },
+        }
+        return {
+          id,
+          ctx: this.parentCtx,
+          options: this.parentOptions,
+          session: this.splitApi
+            ? { ...common, snapshotEvents: () => PARENT_EVENTS }
+            : { ...common, events: PARENT_EVENTS },
+        }
+      },
       create: async (input: FakeCreateInput) => {
         this.calls.push('create')
         this.createInput = input
@@ -115,7 +120,11 @@ class FakeArchivedRuntime {
         }
       if (name === 'sessionPersistence') return {
         list: async () => [this.parentHeader],
-        inspect: async () => ({ meta: this.parentHeader, events: PARENT_EVENTS }),
+        inspect: async () => ({
+          meta: this.parentHeader,
+          events: PARENT_EVENTS,
+          ...(this.splitApi ? { inheritedEventCount: 0 } : {}),
+        }),
       }
       return undefined
     },
@@ -180,6 +189,43 @@ describe('ArchivedForkSideChatService', () => {
     })
     expect(runtime.calls).toContain('preset:compose-parent')
     expect(runtime.calls.some(call => call.startsWith('attach:E:\\workspace:session-'))).toBe(true)
+  })
+
+  it('uses the split 0.1.2 seeded-session contract', async () => {
+    const runtime = new FakeArchivedRuntime()
+    runtime.splitApi = true
+    const service = new ArchivedForkSideChatService(runtime.context)
+
+    const created = await service.create(createRequest())
+
+    expect(created.ok).toBe(true)
+    expect(runtime.createInput?.seed).toEqual(PARENT_EVENTS.slice(0, 5))
+    expect(runtime.createInput?.inheritedEventCount).toBe(5)
+    expect(runtime.createInput?.meta).toMatchObject({
+      cwd: 'E:\\workspace',
+      parentSession: 'parent-1',
+      isSeeded: true,
+      agentPreset: 'parent-composition',
+    })
+    expect(runtime.createInput?.meta).not.toHaveProperty('seedLength')
+  })
+
+  it('uses the split contract for a persisted 0.1.2 parent', async () => {
+    const runtime = new FakeArchivedRuntime()
+    runtime.parentLive = false
+    runtime.splitApi = true
+    const service = new ArchivedForkSideChatService(runtime.context)
+
+    const created = await service.create(createRequest())
+
+    expect(created.ok).toBe(true)
+    expect(runtime.createInput?.inheritedEventCount).toBe(5)
+    expect(runtime.createInput?.meta).toMatchObject({
+      parentSession: 'parent-1',
+      isSeeded: true,
+      agentPreset: 'parent-composition',
+    })
+    expect(runtime.createInput?.meta).not.toHaveProperty('seedLength')
   })
 
   it('snapshots the inherited model instead of following later parent changes', async () => {
