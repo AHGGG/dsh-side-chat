@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection, type Agent, type AgentHandle, type AgentOptions, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
-import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
-import { ApiRemoteSessionNotFound, inspectApiRemoteSession } from '@deepseek-ai/dsh-api-remotes'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { foldRequestHeader, SessionId as dshSessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
@@ -32,6 +30,7 @@ interface ParentSource {
   readonly id: ReturnType<typeof dshSessionId>
   readonly header: SessionHeader
   readonly events: readonly SessionEvent[]
+  readonly api: 'legacy' | 'split'
   readonly live?: Agent
 }
 
@@ -44,6 +43,22 @@ interface BoundaryCut {
 interface ForkComposition {
   readonly agentPreset?: string
   readonly setup?: (childCtx: Context) => void | Promise<void>
+}
+
+interface CompatibleLiveSession {
+  readonly header: SessionHeader
+  readonly events?: readonly SessionEvent[]
+  snapshotEvents?: () => readonly SessionEvent[]
+}
+
+interface CompatibleSessionInspection {
+  readonly meta: SessionHeader
+  readonly events: readonly SessionEvent[]
+  readonly inheritedEventCount?: number
+}
+
+interface CompatibleSessionPersistence {
+  inspect(id: ReturnType<typeof dshSessionId>): Promise<CompatibleSessionInspection>
 }
 
 function failure<T>(code: SideChatErrorCode, message: string, recoverable = false): SideChatResult<T> {
@@ -60,6 +75,24 @@ function wireSelection(selection: ModelSelection | undefined): SideChatModelSele
     model: selection.model,
     ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: String(selection.reasoningEffort) }),
   }
+}
+
+function persistenceNotFound(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const candidate = error as Error & { readonly code?: unknown }
+  return candidate.name === 'SessionPersistenceNotFoundError'
+    || candidate.code === 'session/not-found'
+    || /^session ["'].+["'] not found$/iu.test(candidate.message)
+}
+
+function sessionPreset(header: SessionHeader, events: readonly SessionEvent[]): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'agent-preset/selected') continue
+    const value = (event.data as { readonly agentPreset?: unknown }).agentPreset
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return header.agentPreset
 }
 
 function inheritedSelection(source: ParentSource): ModelSelection | undefined {
@@ -164,7 +197,7 @@ export class ArchivedForkSideChatService {
     try {
       source = await this.readParent(request.parentSessionId)
     } catch (error) {
-      if (error instanceof ApiRemoteSessionNotFound) {
+      if (persistenceNotFound(error)) {
         return failure('parent_session_missing', 'The parent session could not be found.')
       }
       this.ctx.logger.warn(`archived Side Chat source read failed: ${String(error)}`)
@@ -200,18 +233,31 @@ export class ArchivedForkSideChatService {
         installModelSelection(childCtx, selection)
         if (composition.setup !== undefined) await composition.setup(childCtx)
       }
-      handle = await this.ctx.agents.create({
-        sessionId: childDshId,
-        seed: source.events.slice(0, boundary.cut),
-        meta: {
-          ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
-          parentSession: source.id,
-          seedLength: boundary.cut,
-          ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
-        },
-        agentOptions,
-        setup,
-      })
+      const seed = source.events.slice(0, boundary.cut)
+      const commonMeta = {
+        ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+        parentSession: source.id,
+        ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
+      }
+      const createOptions = source.api === 'split'
+        ? {
+            sessionId: childDshId,
+            seed,
+            inheritedEventCount: boundary.cut,
+            meta: { ...commonMeta, isSeeded: true as const },
+            agentOptions,
+            setup,
+          }
+        : {
+            sessionId: childDshId,
+            seed,
+            meta: { ...commonMeta, seedLength: boundary.cut },
+            agentOptions,
+            setup,
+          }
+      handle = await this.ctx.agents.create(
+        createOptions as Parameters<typeof this.ctx.agents.create>[0],
+      )
       const cwd = source.header.cwd
       const workspace = cwd === undefined ? undefined : await this.ctx.workspaceRegistry.resolveByPath(cwd)
       await workspace?.attachSession(childDshId)
@@ -264,26 +310,45 @@ export class ArchivedForkSideChatService {
     const id = dshSessionId(parentSessionId)
     const live = this.ctx.agents.get(id)
     if (live !== undefined) {
-      return { id, header: live.session.header, events: [...live.session.events], live }
+      const session = live.session as unknown as CompatibleLiveSession
+      const snapshotEvents = session.snapshotEvents
+      const split = typeof snapshotEvents === 'function'
+      const events = split
+        ? snapshotEvents.call(session)
+        : session.events ?? []
+      return {
+        id,
+        header: session.header,
+        events: [...events],
+        api: split ? 'split' : 'legacy',
+        live,
+      }
     }
-    const inspected = await inspectApiRemoteSession(this.ctx, id)
-    return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }
+    const persistence = this.ctx.get('sessionPersistence') as unknown as
+      | CompatibleSessionPersistence
+      | undefined
+    if (persistence === undefined) throw new Error('Session persistence is unavailable.')
+    const inspected = await persistence.inspect(id)
+    return {
+      id: inspected.meta.id,
+      header: inspected.meta,
+      events: inspected.events,
+      api: inspected.inheritedEventCount === undefined ? 'legacy' : 'split',
+    }
   }
 
   private async resolveComposition(source: ParentSource): Promise<ForkComposition> {
     const presets = this.ctx.get('agentPresets')
     if (presets === undefined) return {}
-    if (source.live !== undefined) {
-      const agentPreset = presets.composedPreset(source.live.ctx)
+    const live = source.live
+    if (live !== undefined) {
+      const agentPreset = presets.composedPreset(live.ctx)
       return {
         ...(agentPreset === undefined ? {} : { agentPreset }),
-        setup: (childCtx: Context) => { presets.composeFrom(childCtx, source.live!.ctx) },
+        setup: (childCtx: Context) => { presets.composeFrom(childCtx, live.ctx) },
       }
     }
-    const resolved = await presets.resolve(resolveSessionPreset({
-      header: source.header,
-      events: source.events,
-    }))
+    const resolved = await presets.resolve(sessionPreset(source.header, source.events))
     return {
       agentPreset: resolved.id,
       setup: async (childCtx: Context) => { await presets.mount(childCtx, resolved.id) },

@@ -1,4 +1,7 @@
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  AssistantBlock,
+  ConversationNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '../../shared/contracts.js'
 import { draftWithoutOccurrence } from './composer-reference.js'
 import type {
@@ -48,7 +51,7 @@ function visibleContentText(content: readonly unknown[]): string {
 
 function assistantText(node: Extract<ConversationNode, { kind: 'assistant' }>): string {
   return node.blocks
-    .flatMap(block => block.kind === 'text' ? [block.text] : [])
+    .flatMap((block: AssistantBlock) => block.kind === 'text' ? [block.text] : [])
     .join('\n')
     .trim()
 }

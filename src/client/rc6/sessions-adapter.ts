@@ -1,19 +1,9 @@
 import type {
-  ConversationLocation,
-  ConversationSnapshot,
-  Session as ConcreteSession,
-  SessionFace,
   SessionBinding,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  MessageId,
-  PromptContentPart,
-  QueueAction,
-  RpcError,
-  SessionId as DshSessionId,
-} from '@deepseek-ai/dsh-api-remotes/client'
+  SessionFace as CurrentSessionFace,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/client'
-import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types'
+import type { SessionId as DshSessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   SideChatClientSessions,
   SideChatQuestionAnswer,
@@ -47,14 +37,27 @@ import {
 } from '../parent-composer/referenced-conversation.js'
 import { SideChatModelPreferences } from '../model-preference.js'
 import type { Rc6ClientContext } from './context.js'
+import {
+  compatibleConversationFace,
+  type SideChatApprovalInteraction,
+  type SideChatConversationFace,
+  type SideChatConversationSnapshot,
+  type SideChatNodeStore,
+  type SideChatQuestionInteraction,
+} from './runtime-compat.js'
 
 const BINDING_WAIT_MS = 8_000
 
-function sideChatError(error: RpcError, fallback: SideChatWireError['code']): SideChatWireError {
+function sideChatError(
+  error: { readonly code: string; readonly message: string },
+  fallback: SideChatWireError['code'],
+): SideChatWireError {
+  const badRequest = error.code === 'bad-request' || error.code === 'gateway/bad-request'
+  const missing = error.code === 'session-not-found' || error.code === 'session/not-found'
   return {
-    code: error.code === 'session-not-found' ? 'side_chat_not_found' : fallback,
+    code: missing ? 'side_chat_not_found' : fallback,
     message: error.message,
-    recoverable: error.code !== 'bad-request',
+    recoverable: !badRequest,
   }
 }
 
@@ -66,7 +69,7 @@ function dshSessionId(id: SessionId): DshSessionId {
   return id as unknown as DshSessionId
 }
 
-function latestCompleted(snapshot: ConversationSnapshot): number | undefined {
+function latestCompleted(snapshot: SideChatConversationSnapshot): number | undefined {
   let latest: number | undefined
   for (const seq of snapshot.turnEnds.values()) {
     if (latest === undefined || seq > latest) latest = seq
@@ -74,13 +77,15 @@ function latestCompleted(snapshot: ConversationSnapshot): number | undefined {
   return latest
 }
 
-function locationSettled(location: ConversationLocation): boolean {
+function locationSettled(
+  location: NonNullable<ReturnType<SideChatNodeStore['get']>>['location'],
+): boolean {
   if (location.kind === 'turn') return location.turn.status === 'closed'
   if (location.kind === 'step') return location.turn.status === 'closed' && location.step.status === 'closed'
   return false
 }
 
-function childSnapshot(face: SessionFace): SideChatSessionSnapshot {
+function childSnapshot(face: SideChatConversationFace): SideChatSessionSnapshot {
   const snapshot = face.getSnapshot()
   const pending = snapshot.pending[0]
   const status: SideChatSessionSnapshot['status'] = pending?.kind === 'approval'
@@ -98,7 +103,7 @@ function childSnapshot(face: SessionFace): SideChatSessionSnapshot {
 class Rc6SessionBinding implements SideChatSessionBinding {
   readonly sessionId: SessionId
 
-  constructor(readonly face: SessionFace) {
+  constructor(readonly face: SideChatConversationFace) {
     this.sessionId = sideChatSessionId(face.sessionId)
   }
 
@@ -107,7 +112,7 @@ class Rc6SessionBinding implements SideChatSessionBinding {
   subscribe = (listener: () => void): (() => void) => this.face.subscribe(listener)
 
   async prompt(content: readonly SideChatPromptPart[], mode: 'queue' | 'steer') {
-    const result = await this.face.prompt(content.map(part => ({ ...part })) as PromptContentPart[], mode)
+    const result = await this.face.prompt(content.map(part => ({ ...part })), mode)
     return result.ok
       ? { ok: true as const }
       : { ok: false as const, error: sideChatError(result.error, 'side_chat_prompt_failed') }
@@ -125,10 +130,10 @@ class Rc6SessionBinding implements SideChatSessionBinding {
         error: operationError('invalid_request', 'Queued image messages cannot be edited in the Side Chat panel.'),
       }
     }
-    const normalized: QueueAction = action.kind === 'edit'
-      ? { kind: 'edit', content: action.content.map(part => ({ type: 'text', text: part.type === 'text' ? part.text : '' })) }
+    const normalized = action.kind === 'edit'
+      ? { kind: 'edit', content: action.content.map(part => ({ type: 'text' as const, text: part.type === 'text' ? part.text : '' })) }
       : action
-    const result = await this.face.updateQueue(itemId as MessageId, normalized)
+    const result = await this.face.updateQueue(itemId, normalized)
     return result.ok
       ? { ok: true as const }
       : { ok: false as const, error: sideChatError(result.error, 'side_chat_prompt_failed') }
@@ -142,23 +147,15 @@ class Rc6SessionBinding implements SideChatSessionBinding {
   }
 
   async respondApproval(interactionId: string, decision: 'approve' | 'decline') {
-    const wait = this.face.getSnapshot().pending
-      .find(item => item.key === interactionId && item.kind === 'approval') as
-        | Extract<ConversationSnapshot['pending'][number], { kind: 'approval' }>
-        | undefined
+    const wait = this.face.getSnapshot().pending.find(
+      (item): item is SideChatApprovalInteraction =>
+        item.key === interactionId && item.kind === 'approval',
+    )
     if (wait === undefined) {
       return { ok: false as const, error: operationError('invalid_request', 'The approval is no longer pending.') }
     }
     try {
-      const receipt = await wait.respond({
-        ok: true,
-        value: {
-          sessionId: wait.sessionId,
-          approvalId: wait.payload.approvalId,
-          outcome: decision === 'approve' ? 'allowed-once' : 'rejected',
-        },
-      })
-      return receipt.accepted
+      return await wait.respond(decision)
         ? { ok: true as const }
         : { ok: false as const, error: operationError('transport_error', 'The approval response arrived too late.') }
     } catch {
@@ -167,34 +164,24 @@ class Rc6SessionBinding implements SideChatSessionBinding {
   }
 
   async respondQuestion(interactionId: string, answer: SideChatQuestionAnswer | null) {
-    const wait = this.face.getSnapshot().pending
-      .find(item => item.key === interactionId && item.kind === 'question') as
-        | Extract<ConversationSnapshot['pending'][number], { kind: 'question' }>
-        | undefined
+    const wait = this.face.getSnapshot().pending.find(
+      (item): item is SideChatQuestionInteraction =>
+        item.key === interactionId && item.kind === 'question',
+    )
     if (wait === undefined) {
       return { ok: false as const, error: operationError('invalid_request', 'The question is no longer pending.') }
     }
     try {
-      const result = answer === null
-        ? {
-            ok: false as const,
-            error: { code: 'cancelled' as const, message: 'Question cancelled.', details: {} },
-          }
+      const normalized = answer === null
+        ? null
         : {
-            ok: true as const,
-            value: {
-              sessionId: wait.sessionId,
-              answer: {
-                answers: answer.answers.map(item => ({
-                  id: item.id,
-                  selected: [...item.selected],
-                  ...(item.custom === undefined ? {} : { custom: item.custom }),
-                })),
-              } satisfies AskUserQuestionAnswer,
-            },
+            answers: answer.answers.map(item => ({
+              id: item.id,
+              selected: [...item.selected],
+              ...(item.custom === undefined ? {} : { custom: item.custom }),
+            })),
           }
-      const receipt = await wait.respond(result)
-      return receipt.accepted
+      return await wait.respond(normalized)
         ? { ok: true as const }
         : { ok: false as const, error: operationError('transport_error', 'The question response arrived too late.') }
     } catch {
@@ -206,6 +193,10 @@ class Rc6SessionBinding implements SideChatSessionBinding {
 /** Adapter over rc.6's public SessionRuntime and exported concrete Session type. */
 export class Rc6SideChatSessions implements SideChatClientSessions {
   private readonly renamed = new Set<SessionId>()
+  private readonly faces = new Map<DshSessionId, {
+    readonly source: CurrentSessionFace
+    readonly compatible: SideChatConversationFace
+  }>()
   private readonly annotationPersistence = new ConversationAnnotationPersistence()
   private readonly modelPreferences = new SideChatModelPreferences()
 
@@ -245,16 +236,16 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
   }
 
   lastCompletedSeq(parentSessionId: SessionId): number | undefined {
-    const snapshot = this.ctx.sessions.binding(dshSessionId(parentSessionId))?.session.getSnapshot()
+    const snapshot = this.face(parentSessionId)?.getSnapshot()
     return snapshot === undefined ? undefined : latestCompleted(snapshot)
   }
 
   selectionIsCurrent(selection: ConversationSelection): boolean {
     if (this.currentSessionId() !== selection.parentSessionId) return false
-    const snapshot = this.ctx.sessions.binding(dshSessionId(selection.parentSessionId))?.session.getSnapshot()
+    const snapshot = this.face(selection.parentSessionId)?.getSnapshot()
     if (snapshot === undefined) return false
     return selection.fragments.every((fragment) => {
-      const node = snapshot.chat.nodes.get(fragment.nodeKey)
+      const node = snapshot.chatNodes.get(fragment.nodeKey)
       return node !== undefined
         && node.visibility === 'visible'
         && node.kind === fragment.nodeKind
@@ -334,15 +325,15 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 
   async retain(sessionId: SessionId): Promise<SideChatSessionLease> {
     const binding = await this.waitForBinding(dshSessionId(sessionId))
-    const concrete = binding.session as ConcreteSession
-    await concrete.open()
+    const face = this.adaptedFace(binding.session)
+    await face.open()
     if (!this.renamed.has(sessionId)) {
       this.renamed.add(sessionId)
       const parentTitle = this.ctx.sessions.list.getSnapshot().byId[dshSessionId(sessionId)]?.displayTitle
       const title = parentTitle === undefined ? 'Side Chat' : `Side Chat · ${parentTitle}`
-      await binding.session.rename(title.slice(0, 160)).catch(() => undefined)
+      await face.rename(title.slice(0, 160)).catch(() => undefined)
     }
-    const adapted = new Rc6SessionBinding(binding.session)
+    const adapted = new Rc6SessionBinding(face)
     return { sessionId, binding: adapted, release: () => {} }
   }
 
@@ -355,8 +346,9 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
     console[method](`[dsh-side-chat] ${message.text}`)
   }
 
-  face(sessionId: SessionId): SessionFace | undefined {
-    return this.ctx.sessions.binding(dshSessionId(sessionId))?.session
+  face(sessionId: SessionId): SideChatConversationFace | undefined {
+    const source = this.ctx.sessions.binding(dshSessionId(sessionId))?.session
+    return source === undefined ? undefined : this.adaptedFace(source)
   }
 
   title(sessionId: SessionId): string | undefined {
@@ -381,6 +373,19 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 
   rememberSideChatModelPreference(selection: SideChatModelSelection): void {
     this.modelPreferences.set(selection)
+  }
+
+  private adaptedFace(source: CurrentSessionFace): SideChatConversationFace {
+    const existing = this.faces.get(source.sessionId)
+    if (existing?.source === source) return existing.compatible
+    const chat = this.ctx.uiConversation?.binding(source.sessionId).target('chat')
+    const pending = this.ctx.uiSession?.pendingInteractions
+    const compatible = compatibleConversationFace(source, {
+      ...(chat === undefined ? {} : { chat }),
+      ...(pending === undefined ? {} : { pending }),
+    })
+    this.faces.set(source.sessionId, { source, compatible })
+    return compatible
   }
 
   private currentParentInput(): ParentComposerInput | undefined {
@@ -417,7 +422,7 @@ export class Rc6SideChatSessions implements SideChatClientSessions {
 }
 
 export function selectionDescriptor(
-  snapshot: ConversationSnapshot,
+  snapshot: SideChatConversationSnapshot,
   anchorKey: string,
 ): {
   readonly nodeKey: string
@@ -428,7 +433,7 @@ export function selectionDescriptor(
   readonly modelVisible: boolean
   readonly settled: boolean
 } | undefined {
-  const node = snapshot.chat.nodes.get(anchorKey)
+  const node = snapshot.chatNodes.get(anchorKey)
   if (node === undefined || node.visibility !== 'visible') return undefined
   const source = node.kind === 'user' || node.kind === 'steering'
     ? 'user'

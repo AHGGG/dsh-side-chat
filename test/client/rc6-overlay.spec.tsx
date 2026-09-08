@@ -2,7 +2,10 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationSnapshot, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  SideChatConversationFace as SessionFace,
+  SideChatConversationSnapshot as ConversationSnapshot,
+} from '../../src/client/rc6/runtime-compat.js'
 import type { SideChatClientSessions } from '../../src/client/contracts.js'
 import {
   addSelectionToConversation,

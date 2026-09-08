@@ -9,13 +9,6 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
-import type {
-  AssistantBlock,
-  ConversationNode,
-  PendingInteraction,
-  QueuedMessage,
-  SessionFace,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContentBlock } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   DisclosureRow,
@@ -36,6 +29,16 @@ import {
   ToolCard,
   type ToolState,
 } from './SideChatTool.js'
+import { MARKDOWN_LABELS } from './primitive-labels.js'
+import type {
+  AssistantBlock,
+  ConversationNode,
+  SideChatApprovalInteraction,
+  SideChatConversationFace,
+  SideChatPendingInteraction,
+  SideChatQuestionInteraction,
+  SideChatQueuedMessage,
+} from './runtime-compat.js'
 
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
@@ -166,7 +169,9 @@ function AssistantBlocks({ blocks, streaming = false, projectedToolCallIds, unpr
 }) {
   return <>{blocks.map((block, index) => {
     const key = `${block.kind}-${String(index)}`
-    if (block.kind === 'text') return <MarkdownText key={key} text={block.text} streaming={streaming} />
+    if (block.kind === 'text') {
+      return <MarkdownText key={key} text={block.text} streaming={streaming} labels={MARKDOWN_LABELS} />
+    }
     if (block.kind === 'reasoning') {
       return (
         <ReasoningRow
@@ -257,13 +262,13 @@ function ApprovalCard({
   wait,
   onRespond,
 }: {
-  readonly wait: Extract<PendingInteraction, { kind: 'approval' }>
+  readonly wait: SideChatApprovalInteraction
   readonly onRespond: (decision: 'approve' | 'decline') => void
 }) {
   return (
     <section className="dsh-side-chat-interaction" aria-label="Tool approval required">
-      <strong>Allow tool: {wait.payload.toolName}?</strong>
-      {wait.payload.reason !== undefined && <p>{wait.payload.reason}</p>}
+      <strong>Allow tool: {wait.toolName}?</strong>
+      {wait.reason !== undefined && <p>{wait.reason}</p>}
       <div className="dsh-side-chat-interaction-actions">
         <button type="button" onClick={() => { onRespond('decline') }}>Decline</button>
         <button type="button" onClick={() => { onRespond('approve') }}>Allow once</button>
@@ -281,10 +286,10 @@ function QuestionCard({
   wait,
   onRespond,
 }: {
-  readonly wait: Extract<PendingInteraction, { kind: 'question' }>
+  readonly wait: SideChatQuestionInteraction
   readonly onRespond: (answer: SideChatQuestionAnswer | null) => void
 }) {
-  const questions = wait.payload.questions
+  const questions = wait.questions
   const [answers, setAnswers] = useState<Record<string, DraftAnswer>>(() => Object.fromEntries(
     questions.map(question => [question.id, { selected: [], custom: '' }]),
   ))
@@ -351,7 +356,7 @@ function PendingCards({
   pending,
   controller,
 }: {
-  readonly pending: readonly PendingInteraction[]
+  readonly pending: readonly SideChatPendingInteraction[]
   readonly controller: SideChatController
 }) {
   return <>{pending.map((wait): ReactNode => wait.kind === 'approval'
@@ -371,7 +376,7 @@ function PendingCards({
       ))}</>
 }
 
-function QueueRows({ queue, controller }: { readonly queue: readonly QueuedMessage[]; readonly controller: SideChatController }) {
+function QueueRows({ queue, controller }: { readonly queue: readonly SideChatQueuedMessage[]; readonly controller: SideChatController }) {
   if (queue.length === 0) return null
   return (
     <section className="dsh-side-chat-queue" aria-label="Queued Side Chat messages">
@@ -396,7 +401,7 @@ export function ArchivedConversation({
   cwd,
   modelControl,
 }: {
-  readonly face: SessionFace
+  readonly face: SideChatConversationFace
   readonly inheritedThroughSeq: number
   readonly controller: SideChatController
   readonly selection?: ConversationSelection

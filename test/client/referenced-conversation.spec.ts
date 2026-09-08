@@ -1,4 +1,4 @@
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConversationNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { describe, expect, it, vi } from 'vitest'
 import type { ParentComposerInput } from '../../src/client/parent-composer/add-to-conversation.js'
 import {

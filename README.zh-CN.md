@@ -8,10 +8,10 @@
 
 ## 安装
 
-如果尚未安装 DSH rc.7，先安装它。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
+如果尚未安装 DSH 0.1.2-rc.1，先安装它。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.0-rc.7
+npm install --global @deepseek-ai/dsh@0.1.2-rc.1
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
@@ -27,7 +27,7 @@ dsh web --port 3080
 
 ### 本地链接调试
 
-当 `dsh plugin --profile web list` 显示插件来自 `link:` 工作区时，DSH 加载的是被 Git 忽略的 `lib/client.js`，而不是 `src/`。切换分支或修改客户端源码后，需要重新构建并重启 `dsh web` 进程：
+当 `dsh plugin --profile web list` 显示插件来自 `link:` 工作区时，DSH 加载的是已提交的 `lib/client.js`，而不是 `src/`。切换分支或修改客户端源码后，需要重新构建并重启 `dsh web` 进程：
 
 ```powershell
 pnpm install --frozen-lockfile
