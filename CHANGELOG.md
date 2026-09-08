@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.3](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.2...v0.7.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* repair DSH 0.1.2 annotation workflow ([9b92b0e](https://github.com/AHGGG/dsh-side-chat/commit/9b92b0e8677843170beccfcfcbbf0e33c92c3960))
+* support DSH 0.1.2 and ship runtime artifacts ([c594488](https://github.com/AHGGG/dsh-side-chat/commit/c59448828016d62da81ff23fedd6ddf7a787bb11))
+* support DSH 0.1.2 annotation workflows ([49af1fc](https://github.com/AHGGG/dsh-side-chat/commit/49af1fcbf33ddeef3c50fd0e4f8d9dc8e3d3c5e5))
+
 ## [0.7.2](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.1...v0.7.2) (2026-08-24)
 
 
