@@ -1,18 +1,18 @@
 import type { SessionId } from '../../shared/contracts.js';
-import type { ParentComposerInput } from './add-to-conversation.js';
-interface AnnotationStorage {
+import type { ParentComposerInput } from './composer-reference.js';
+interface ReferenceStorage {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
     removeItem(key: string): void;
 }
-/** Tab-scoped recovery for drafts persisted as a reference clipboard projection. */
+/** Recover the complete reference-bearing draft, not only a leading annotation.
+ * DSH persists clipboard text, so conversation chips need recovery as well. */
 export declare class ConversationAnnotationPersistence {
     private readonly storage;
-    private readonly observedSessions;
-    constructor(storage?: AnnotationStorage | undefined);
+    private readonly observedInputs;
+    private reconciling;
+    constructor(storage?: ReferenceStorage | undefined);
     reconcile(sessionId: SessionId, input: ParentComposerInput): void;
-    private read;
-    private write;
-    private remove;
+    private restore;
 }
 export {};

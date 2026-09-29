@@ -52,9 +52,8 @@ for (const name of packageNames) {
   }
 }
 
-const nextTestedVersions = testedVersions.includes(targetVersion)
-  ? [...testedVersions]
-  : [...testedVersions, targetVersion]
+// Prerelease DSH APIs change across trains; validate only the requested train.
+const nextTestedVersions = [targetVersion]
 const supportedRange = nextTestedVersions.join(' || ')
 manifest.dshCompatibility.testedVersions = nextTestedVersions
 manifest.dsh ??= {}
@@ -67,8 +66,8 @@ for (const name of dshPeerNames) manifest.peerDependencies[name] = supportedRang
 for (const name of dshDevNames) manifest.devDependencies[name] = targetVersion
 
 await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`)
-// A clean resolution is intentional: retained prerelease peers can otherwise mix
-// the previous and requested DSH release trains in the regenerated lockfile.
+// A clean resolution prevents prerelease packages from previous trains
+// from leaking into the regenerated lockfile.
 await rm(resolve(root, 'node_modules'), { recursive: true, force: true })
 await rm(resolve(root, 'pnpm-lock.yaml'), { force: true })
 execFileSync(pnpmCommand.file, [...pnpmCommand.prefix, 'install', '--no-frozen-lockfile'], {

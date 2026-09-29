@@ -1,486 +1,286 @@
 import type {
-  ConversationSelection,
-  CreateSideChatValue,
-  SessionId,
-  SideChatClientError,
-  SideChatModelSelection,
-  SideChatPhase,
-  SideChatPromptPart,
-  SideChatRemote,
-  SideChatState,
-  SideChatWireError,
+  ConversationSelection, CreateSideChatValue, SendSideChatRequest, SessionId, SideChatModelSelection,
+  SideChatRemote, SideChatResult, SideChatState, SideChatStream, SideChatWireError,
 } from '../shared/contracts.js'
-import type { HostObservable } from '../shared/observable.js'
 import { ObservableValue } from '../shared/observable.js'
-import type {
-  SideChatActionResult,
-  SideChatClientSessions,
-  SideChatQuestionAnswer,
-  SideChatSessionBinding,
-  SideChatSessionLease,
-  SideChatSessionSnapshot,
-} from './contracts.js'
-import { buildSideChatPrompt } from './parent-composer/add-to-conversation.js'
+import type { SideChatActionResult, SideChatClientSessions } from './contracts.js'
 import { assertSelectionCurrent } from './selection/selection-normalizer.js'
 
-const INITIAL_STATE: SideChatState = Object.freeze({ phase: 'closed', draft: '' })
-
-function success<T>(value: T): SideChatActionResult<T> {
-  return { ok: true, value }
-}
-
-function failure<T>(error: SideChatWireError): SideChatActionResult<T> {
-  return { ok: false, error }
-}
-
-function localError(
-  code: SideChatWireError['code'],
-  message: string,
-  recoverable = true,
-): SideChatWireError {
+const INITIAL: SideChatState = Object.freeze({ phase: 'closed', draft: '', messages: [] })
+const success = <T>(value: T): SideChatActionResult<T> => ({ ok: true, value })
+const failure = <T>(error: SideChatWireError): SideChatActionResult<T> => ({ ok: false, error })
+function localError(message: string, code: SideChatWireError['code'] = 'invalid_request', recoverable = false): SideChatWireError {
   return { code, message, recoverable }
 }
-
-function phaseOf(snapshot: SideChatSessionSnapshot): SideChatPhase {
-  switch (snapshot.status) {
-    case 'idle': return 'ready'
-    case 'running': return 'running'
-    case 'needs-input': return 'needs-input'
-    case 'needs-approval': return 'needs-approval'
-    case 'failed': return 'error'
-    case 'interrupted': return 'ready'
-  }
+interface ActiveStream {
+  readonly stream: SideChatStream
+  readonly generation: number
+  readonly request: SendSideChatRequest
+  cancelled: boolean
+  done?: Promise<void>
 }
 
-/** Small controller for the stock rc.6 archived-fork path. */
-export class SideChatController implements HostObservable<SideChatState> {
-  private readonly observable = new ObservableValue(INITIAL_STATE, 'dsh-side-chat')
-  private lease: SideChatSessionLease | undefined
-  private childUnsubscribe: (() => void) | undefined
-  private opening: Promise<SideChatActionResult<void>> | undefined
-  private closing: Promise<SideChatActionResult<void>> | undefined
-  private closeRequested = false
+/** Owns only plugin UI state and a cancellable model stream, never a child Session. */
+export class SideChatController {
+  private readonly observable = new ObservableValue(INITIAL, 'dsh-side-chat')
+  private generation = 0
+  private modelGeneration = 0
+  private requestSequence = 0
   private disposed = false
-
-  constructor(
-    private readonly remote: SideChatRemote,
-    private readonly sessions: SideChatClientSessions,
-  ) {}
-
+  private releaseParent: (() => void) | undefined
+  private creating: Promise<SideChatResult<CreateSideChatValue>> | undefined
+  private closing: Promise<SideChatActionResult<void>> | undefined
+  private running: ActiveStream | undefined
+  private cancelling = false
+  private pendingRequest: SendSideChatRequest | undefined
+  constructor(private readonly remote: SideChatRemote, private readonly sessions: SideChatClientSessions) {}
   getSnapshot = (): SideChatState => this.observable.getSnapshot()
-
   subscribe = (listener: () => void): (() => void) => this.observable.subscribe(listener)
 
-  openDraft(input: {
-    readonly parentSessionId?: SessionId
-    readonly selection?: ConversationSelection
-    readonly draft?: string
-  } = {}): SideChatActionResult<void> {
-    if (this.disposed) return failure(localError('transport_error', 'The Side Chat controller is disposed.', false))
-    if (this.getSnapshot().phase !== 'closed') {
-      return failure(localError('side_chat_already_open', 'A Side Chat is already open.'))
-    }
+  openDraft(input: { readonly parentSessionId?: SessionId; readonly selection?: ConversationSelection; readonly draft?: string } = {}): SideChatActionResult {
+    if (this.disposed) return failure(localError('Side Chat has been disposed.'))
+    if (this.getSnapshot().phase !== 'closed') return failure(localError('Close the current Side Chat first.', 'side_chat_already_open'))
     const parentSessionId = input.parentSessionId ?? this.sessions.currentSessionId()
-    if (parentSessionId === undefined) {
-      return failure(localError('parent_session_missing', 'Start the main conversation first.'))
-    }
+    if (parentSessionId === undefined) return failure(localError('Start the main conversation first.', 'parent_session_missing'))
     try {
       if (input.selection !== undefined) assertSelectionCurrent(input.selection, parentSessionId)
-    } catch (error) {
-      return failure(localError(
-        'selection_stale',
-        error instanceof Error ? error.message : 'The selected text is no longer available.',
-        false,
-      ))
+      this.releaseParent = this.sessions.retainParent(parentSessionId)
+    } catch (cause) {
+      return failure(localError(cause instanceof Error ? cause.message : 'The parent conversation is unavailable.', 'selection_stale'))
     }
-    const modelSelection = this.sessions.sideChatModelPreference()
-    this.publish({
-      phase: 'draft',
-      parentSessionId,
-      ...(input.selection === undefined ? {} : { selection: input.selection }),
-      ...(modelSelection === undefined ? {} : { modelSelection }),
-      draft: input.draft ?? '',
-    })
+    ++this.generation
+    this.observable.publish({ phase: 'draft', parentSessionId, selection: input.selection,
+      modelSelection: this.sessions.sideChatModelPreference(), draft: input.draft ?? '', messages: [] })
     return success(undefined)
   }
-
-  setDraft(draft: string): SideChatActionResult<void> {
+  setDraft(draft: string): SideChatActionResult {
     const state = this.getSnapshot()
-    if (state.phase === 'closed' || state.phase === 'creating' || state.phase === 'opening'
-      || state.phase === 'closing' || state.childSessionId !== undefined) {
-      return failure(localError('invalid_request', 'The draft is not editable right now.', false))
+    if (!['draft', 'error', 'ready'].includes(state.phase) || state.messages.length > 0 || state.error?.operation === 'close') {
+      return failure(localError('The draft is not editable right now.'))
     }
-    this.publish({ ...state, draft })
+    this.observable.publish({ ...state, draft })
     return success(undefined)
   }
-
-  clearSelection(): SideChatActionResult<void> {
+  clearSelection(): SideChatActionResult {
     const state = this.getSnapshot()
-    if (state.selection === undefined) return success(undefined)
-    if (state.childSessionId !== undefined || !['draft', 'error'].includes(state.phase)) {
-      return failure(localError('invalid_request', 'The selected passage has already been sent.', false))
-    }
-    this.publish({ ...state, selection: undefined })
+    if (state.chatId !== undefined || !['draft', 'error'].includes(state.phase)) return failure(localError('The selected context is already captured.'))
+    this.observable.publish({ ...state, selection: undefined })
     return success(undefined)
   }
-
-  initializeModel(selection: SideChatModelSelection): SideChatActionResult<SideChatModelSelection> {
+  initializeModel(model: SideChatModelSelection): SideChatActionResult<SideChatModelSelection> {
     const state = this.getSnapshot()
-    if (state.childSessionId !== undefined || !['draft', 'error'].includes(state.phase)
-      || state.error?.operation === 'close') {
-      return failure(localError('invalid_request', 'The Side Chat model cannot be initialized right now.', false))
-    }
-    const selected = { ...selection }
-    this.publish({ ...state, modelSelection: selected })
-    return success(selected)
+    if (state.chatId !== undefined || !['draft', 'error'].includes(state.phase)) return failure(localError('The model cannot be initialized now.'))
+    this.observable.publish({ ...state, modelSelection: { ...model } })
+    return success({ ...model })
   }
-
-  async selectModel(selection: SideChatModelSelection): Promise<SideChatActionResult<SideChatModelSelection>> {
+  async selectModel(model: SideChatModelSelection): Promise<SideChatActionResult<SideChatModelSelection>> {
     const state = this.getSnapshot()
-    if (state.phase === 'closed' || ['creating', 'opening', 'closing'].includes(state.phase)
-      || state.error?.operation === 'close') {
-      return failure(localError('invalid_request', 'The Side Chat model cannot be changed right now.', false))
+    if (this.cancelling || !['draft', 'error', 'ready'].includes(state.phase) || state.error?.operation === 'close') return failure(localError('Stop the reply before changing models.'))
+    if (state.chatId === undefined) {
+      const result = this.initializeModel(model)
+      if (result.ok) this.sessions.rememberSideChatModelPreference(result.value)
+      return result
     }
-    const selected = { ...selection }
-    const childSessionId = state.childSessionId
-    if (childSessionId === undefined) {
-      const initialized = this.initializeModel(selected)
-      if (initialized.ok) this.sessions.rememberSideChatModelPreference(initialized.value)
-      return initialized
-    }
-    const result = await this.invoke(() => this.remote.selectModel({
-      childSessionId,
-      ...selected,
-    }))
-    if (!result.ok) return failure(result.error)
-    const latest = this.getSnapshot()
-    if (latest.childSessionId === childSessionId && !['closed', 'closing'].includes(latest.phase)) {
-      this.publish({ ...latest, modelSelection: result.value.selected })
+    const generation = this.generation
+    const version = ++this.modelGeneration
+    const result = await this.invoke(() => this.remote.selectModel({ chatId: state.chatId!, ...model }))
+    if (!result.ok) return result
+    if (generation === this.generation && version === this.modelGeneration && this.getSnapshot().phase !== 'running') {
+      this.observable.publish({ ...this.getSnapshot(), modelSelection: result.value.selected })
       this.sessions.rememberSideChatModelPreference(result.value.selected)
     }
     return success(result.value.selected)
   }
-
-  async sendFirst(question: string): Promise<SideChatActionResult<void>> {
-    if (this.opening !== undefined) {
-      return failure(localError('invalid_request', 'The Side Chat is already opening.', false))
-    }
+  async sendFirst(question: string): Promise<SideChatActionResult> {
     const state = this.getSnapshot()
-    const trimmed = question.trim()
-    if (trimmed.length === 0) return failure(localError('invalid_request', 'Enter a Side Chat question.', false))
-    if (state.parentSessionId === undefined || !['draft', 'error'].includes(state.phase)) {
-      return failure(localError('invalid_request', 'The first Side Chat message cannot be sent now.', false))
+    const text = question.trim()
+    if (text.length === 0 || state.parentSessionId === undefined || state.messages.length > 0
+      || !['draft', 'error', 'ready'].includes(state.phase) || state.error?.operation === 'close') {
+      return failure(localError('Enter a question in an open Side Chat draft.'))
     }
-    if (state.error?.operation === 'close') {
-      return failure(localError('side_chat_destroy_failed', 'Retry closing the current Side Chat first.'))
-    }
-    if (state.childSessionId === undefined && state.selection !== undefined
-      && !this.sessions.selectionIsCurrent(state.selection)) {
-      const error = localError('selection_stale', 'Select the passage again before sending.', false)
-      this.fail(error, 'create', { draft: trimmed, firstQuestion: trimmed })
-      return failure(error)
-    }
-    const atSeq = state.selection?.atSeq ?? this.sessions.lastCompletedSeq(state.parentSessionId)
-    if (atSeq === undefined) {
-      const error = localError('parent_session_not_ready', 'Wait for a completed main-conversation turn first.')
-      this.fail(error, 'create', { draft: trimmed, firstQuestion: trimmed })
-      return failure(error)
-    }
-
-    const operation = this.createOpenAndPrompt(state.parentSessionId, atSeq, trimmed)
-    this.opening = operation
-    try {
-      return await operation
-    } finally {
-      if (this.opening === operation) this.opening = undefined
-    }
-  }
-
-  async send(text: string, mode: 'queue' | 'steer' = 'queue'): Promise<SideChatActionResult<void>> {
-    const trimmed = text.trim()
-    if (trimmed.length === 0) return failure(localError('invalid_request', 'Enter a message.', false))
-    return await this.sendParts([{ type: 'text', text: trimmed }], mode)
-  }
-
-  async sendParts(
-    content: readonly SideChatPromptPart[],
-    mode: 'queue' | 'steer' = 'queue',
-  ): Promise<SideChatActionResult<void>> {
-    if (content.length === 0) return failure(localError('invalid_request', 'Enter a message.', false))
-    const binding = this.bindingTarget()
-    if (!binding.ok) return binding
-    const result = await this.invoke(() => binding.value.prompt(content, mode))
-    if (this.getSnapshot().phase === 'closing' || this.getSnapshot().phase === 'closed') {
-      return failure(localError('transport_error', 'The Side Chat was closed.', false))
-    }
-    if (!result.ok) this.fail(result.error, 'prompt')
-    return result.ok ? success(undefined) : failure(result.error)
-  }
-
-  async updateQueue(
-    itemId: string,
-    action: { readonly kind: 'edit'; readonly content: readonly SideChatPromptPart[] }
-      | { readonly kind: 'remove' }
-      | { readonly kind: 'steer' },
-  ): Promise<SideChatActionResult<void>> {
-    const binding = this.bindingTarget()
-    if (!binding.ok) return binding
-    const result = await this.invoke(() => binding.value.updateQueue(itemId, action))
-    return result.ok ? success(undefined) : failure(result.error)
-  }
-
-  async cancel(): Promise<SideChatActionResult<void>> {
-    const binding = this.bindingTarget()
-    if (!binding.ok) return binding
-    const result = await this.invoke(() => binding.value.cancel())
-    return result.ok ? success(undefined) : failure(result.error)
-  }
-
-  async respondApproval(
-    interactionId: string,
-    decision: 'approve' | 'decline',
-  ): Promise<SideChatActionResult<void>> {
-    const binding = this.bindingTarget()
-    if (!binding.ok) return binding
-    const result = await this.invoke(() => binding.value.respondApproval(interactionId, decision))
-    return result.ok ? success(undefined) : failure(result.error)
-  }
-
-  async respondQuestion(
-    interactionId: string,
-    answer: SideChatQuestionAnswer | null,
-  ): Promise<SideChatActionResult<void>> {
-    const binding = this.bindingTarget()
-    if (!binding.ok) return binding
-    const result = await this.invoke(() => binding.value.respondQuestion(interactionId, answer))
-    return result.ok ? success(undefined) : failure(result.error)
-  }
-
-  async close(): Promise<SideChatActionResult<void>> {
-    const state = this.getSnapshot()
-    if (state.phase === 'closed') return success(undefined)
-    if (state.childSessionId === undefined && this.opening === undefined) {
-      this.reset()
-      return success(undefined)
-    }
-    if (this.opening !== undefined) {
-      this.closeRequested = true
-      this.publish({ ...state, phase: 'closing', error: undefined })
-      await this.opening
-      const after = this.getSnapshot()
-      if (after.phase === 'closed') return success(undefined)
-      if (after.error?.operation === 'close') return failure(after.error)
-      if (after.childSessionId === undefined) {
-        this.reset()
-        return success(undefined)
+    if (state.chatId === undefined) {
+      if (state.selection !== undefined && !this.sessions.selectionIsCurrent(state.selection)) {
+        return this.fail(localError('Select the passage again before sending.', 'selection_stale'), 'create')
       }
-      return await this.closeChild(after.childSessionId)
+      const atSeq = state.selection?.atSeq ?? this.sessions.lastCompletedSeq(state.parentSessionId)
+      if (atSeq === undefined) return this.fail(localError('Wait for a completed parent turn.', 'parent_session_not_ready', true), 'create')
+      const generation = this.generation
+      this.observable.publish({ ...state, phase: 'creating', draft: text, error: undefined })
+      const operation = this.invoke(() => this.remote.create({
+        parentSessionId: state.parentSessionId!, atSeq,
+        selectedText: state.selection?.text, modelSelection: state.modelSelection,
+      }))
+      this.creating = operation
+      const result = await operation
+      if (this.creating === operation) this.creating = undefined
+      if (generation !== this.generation) return failure(localError('The Side Chat was closed.'))
+      if (!result.ok) return this.fail(result.error, 'create')
+      this.observable.publish({ ...this.getSnapshot(), phase: 'ready', chatId: result.value.chatId,
+        boundarySeq: result.value.boundarySeq, modelSelection: result.value.modelSelection, error: undefined })
     }
-    if (state.childSessionId === undefined) {
-      this.reset()
-      return success(undefined)
-    }
-    return await this.closeChild(state.childSessionId)
+    return await this.send(text)
   }
 
-  async retry(): Promise<SideChatActionResult<unknown>> {
+  /** Resolves at admission; the independently consumed stream continues to update the transcript. */
+  async send(question: string): Promise<SideChatActionResult> {
+    const state = this.getSnapshot()
+    const text = question.trim()
+    if (text.length === 0 || state.chatId === undefined || this.running !== undefined || this.cancelling
+      || !['ready', 'error'].includes(state.phase) || state.error?.operation === 'close') {
+      return failure(localError('Wait for the current reply or stop it before sending.'))
+    }
+    const request = this.pendingRequest?.chatId === state.chatId && this.pendingRequest.text === text
+      ? this.pendingRequest : { chatId: state.chatId, requestId: `${state.chatId}:${++this.requestSequence}`, text }
+    this.pendingRequest = request
+    let stream: SideChatStream
+    try { stream = this.remote.stream(request) }
+    catch (cause) { return this.fail(localError(String(cause), 'transport_error', true), 'prompt') }
+    const active: ActiveStream = { stream, generation: this.generation, request, cancelled: false }
+    this.running = active
+    this.observable.publish({ ...state, phase: state.messages.length === 0 ? 'creating' : 'running', error: undefined })
+    const admission = new Promise<SideChatActionResult>(resolve => { active.done = this.consume(active, resolve) })
+    return await admission
+  }
+  async cancel(): Promise<SideChatActionResult> {
+    const chatId = this.getSnapshot().chatId
+    if (chatId === undefined || this.running === undefined) return success(undefined)
+    this.cancelling = true
+    const active = this.running
+    active.cancelled = true
+    this.disposeStream(active.stream)
+    try {
+      const result = await this.invoke(() => this.remote.cancel({ chatId }))
+      await active.done
+      return result.ok ? success(undefined) : result
+    } finally { this.cancelling = false }
+  }
+  async retry(): Promise<SideChatActionResult> {
     const state = this.getSnapshot()
     if (state.error?.operation === 'close') return await this.close()
-    if (state.error?.operation === 'create'
-      || state.error?.operation === 'open'
-      || state.error?.operation === 'prompt') {
-      return await this.sendFirst(state.firstQuestion ?? state.draft)
-    }
-    return failure(localError('invalid_request', 'There is no failed operation to retry.', false))
+    if (state.messages.length === 0) return await this.sendFirst(state.draft)
+    if (this.pendingRequest !== undefined) return await this.send(this.pendingRequest.text)
+    return failure(localError('An admitted question is never replayed automatically. Send a follow-up to continue.'))
   }
-
+  async close(): Promise<SideChatActionResult> {
+    if (this.closing !== undefined) return await this.closing
+    if (this.getSnapshot().phase === 'closed') return success(undefined)
+    const operation = this.closeCurrent()
+    this.closing = operation
+    try { return await operation } finally { if (this.closing === operation) this.closing = undefined }
+  }
   async dispose(): Promise<void> {
     if (this.disposed) return
-    if (this.getSnapshot().phase !== 'closed') {
-      const result = await this.close()
-      if (!result.ok) {
-        this.sessions.notify({ kind: 'warning', text: 'The Side Chat could not be closed cleanly.' })
-      }
-    }
     this.disposed = true
-    this.detachLease()
-    this.observable.dispose()
-  }
-
-  private async createOpenAndPrompt(
-    parentSessionId: SessionId,
-    atSeq: number,
-    question: string,
-  ): Promise<SideChatActionResult<void>> {
-    const original = this.getSnapshot()
-    let childSessionId = original.childSessionId
-    if (childSessionId === undefined) {
-      this.publish({ ...original, phase: 'creating', draft: question, firstQuestion: question, error: undefined })
-      const created = await this.invoke(() => this.remote.create({
-        parentSessionId,
-        atSeq,
-        ...(original.modelSelection === undefined ? {} : { modelSelection: original.modelSelection }),
-      }))
-      if (!created.ok) {
-        if (this.closeRequested) this.reset()
-        else this.fail(created.error, 'create', { draft: question, firstQuestion: question })
-        return failure(created.error)
-      }
-      childSessionId = created.value.childSessionId
-      this.publishCreated(created.value, question)
-      if (this.closeRequested || this.disposed) {
-        const closed = await this.closeChild(childSessionId)
-        return closed.ok
-          ? failure(localError('transport_error', 'The Side Chat was closed.', false))
-          : closed
-      }
-    }
-
-    if (this.lease === undefined) {
-      this.publish({ ...this.getSnapshot(), phase: 'opening', error: undefined })
-      try {
-        const lease = await this.sessions.retain(childSessionId)
-        if (this.closeRequested || this.disposed) {
-          lease.release()
-          const closed = await this.closeChild(childSessionId)
-          return closed.ok
-            ? failure(localError('transport_error', 'The Side Chat was closed.', false))
-            : closed
-        }
-        this.attachLease(lease, childSessionId)
-      } catch {
-        const error = localError('side_chat_open_failed', 'The child Session could not be opened.')
-        this.fail(error, 'open', { firstQuestion: question, draft: question })
-        return failure(error)
-      }
-    }
-
-    const binding = this.lease?.binding
-    if (binding === undefined) {
-      const error = localError('side_chat_open_failed', 'The child Session is unavailable.')
-      this.fail(error, 'open', { firstQuestion: question, draft: question })
-      return failure(error)
-    }
-    const prompted = await this.invoke(() => binding.prompt(buildSideChatPrompt(original.selection, question), 'queue'))
-    if (!prompted.ok) {
-      this.fail(prompted.error, 'prompt', { firstQuestion: question, draft: question })
-      return failure(prompted.error)
-    }
-    this.publish({
-      ...this.getSnapshot(),
-      phase: phaseOf(binding.getSnapshot()),
-      draft: '',
-      firstQuestion: undefined,
-      error: undefined,
-    })
-    return success(undefined)
-  }
-
-  private publishCreated(created: CreateSideChatValue, question: string): void {
-    this.publish({
-      ...this.getSnapshot(),
-      phase: 'opening',
-      parentSessionId: created.parentSessionId,
-      childSessionId: created.childSessionId,
-      boundarySeq: created.boundarySeq,
-      inheritedThroughSeq: created.inheritedThroughSeq,
-      ...(created.modelSelection === undefined ? {} : { modelSelection: created.modelSelection }),
-      firstQuestion: question,
-      error: undefined,
-    })
-  }
-
-  private async closeChild(childSessionId: SessionId): Promise<SideChatActionResult<void>> {
-    if (this.closing !== undefined) return await this.closing
-    const operation = this.performClose(childSessionId)
-    this.closing = operation
     try {
-      return await operation
+      const result = await this.close()
+      if (!result.ok) this.sessions.notify({ kind: 'warning', text: result.error.message })
     } finally {
-      if (this.closing === operation) this.closing = undefined
+      if (this.running !== undefined) this.disposeStream(this.running.stream)
+      this.releaseParent?.()
+      this.releaseParent = undefined
+      this.observable.dispose()
     }
   }
 
-  private async performClose(childSessionId: SessionId): Promise<SideChatActionResult<void>> {
-    this.publish({ ...this.getSnapshot(), phase: 'closing', error: undefined })
-    const closed = await this.invoke(() => this.remote.close({ childSessionId }))
-    if (!closed.ok) {
-      this.fail(closed.error, 'close')
-      return failure(closed.error)
+  private async consume(active: ActiveStream, resolve: (result: SideChatActionResult) => void): Promise<void> {
+    let admitted = false
+    let terminal = false
+    const current = (): boolean => active.generation === this.generation && this.running === active
+    const assistantId = `${active.request.requestId}:assistant`
+    try {
+      for await (const event of active.stream) {
+        if (!current()) break
+        const state = this.getSnapshot()
+        if (event.type === 'started') {
+          if (admitted || event.requestId !== active.request.requestId) throw new Error('Invalid Side Chat admission response.')
+          admitted = true
+          this.pendingRequest = undefined
+          this.observable.publish({ ...state, phase: 'running', draft: '', modelSelection: event.modelSelection,
+            messages: [...state.messages,
+              { id: `${active.request.requestId}:user`, role: 'user', text: active.request.text, status: 'complete',
+                selectedText: state.messages.length === 0 ? state.selection?.text : undefined },
+              { id: assistantId, role: 'assistant', text: '', reasoning: '', status: 'streaming' },
+            ], error: undefined })
+          this.sessions.rememberSideChatModelPreference(event.modelSelection)
+          resolve(success(undefined))
+        } else if (event.type === 'content') {
+          if (!admitted) throw new Error('Side Chat content arrived before admission.')
+          this.observable.publish({ ...state, messages: state.messages.map(message => message.id === assistantId
+            ? { ...message, text: event.text, reasoning: event.reasoning } : message) })
+        } else if (event.type === 'finished') {
+          if (!admitted) throw new Error('Side Chat ended before admission.')
+          terminal = true
+          this.observable.publish({ ...state, phase: 'ready', messages: state.messages.map(message => message.id === assistantId
+            ? { ...message, status: event.status } : message) })
+          break
+        } else {
+          terminal = true
+          const issue = { ...event.error, recoverable: !admitted && event.error.recoverable }
+          this.streamFailure(issue, assistantId)
+          resolve(failure(issue))
+          break
+        }
+      }
+      if (current() && !terminal && !active.cancelled) throw new Error('The Side Chat connection ended before the reply completed.')
+    } catch (cause) {
+      if (current() && !active.cancelled) {
+        const issue = localError(cause instanceof Error ? cause.message : String(cause), 'transport_error', !admitted)
+        this.streamFailure(issue, assistantId)
+        resolve(failure(issue))
+      }
+    } finally {
+      if (current() && active.cancelled) {
+        this.pendingRequest = undefined
+        const state = this.getSnapshot()
+        this.observable.publish({ ...state, phase: 'ready', error: undefined,
+          messages: state.messages.map(message => message.id === assistantId ? { ...message, status: 'stopped' } : message) })
+      }
+      this.disposeStream(active.stream)
+      if (this.running === active) this.running = undefined
+      resolve(failure(localError('The Side Chat was closed.')))
     }
-    this.reset()
+  }
+  private streamFailure(issue: SideChatWireError, assistantId: string): void {
+    const state = this.getSnapshot()
+    this.observable.publish({ ...state, phase: state.messages.length === 0 ? 'error' : 'ready',
+      messages: state.messages.map(message => message.id === assistantId ? { ...message, status: 'error' } : message),
+      error: { ...issue, operation: 'prompt' } })
+  }
+  private async closeCurrent(): Promise<SideChatActionResult> {
+    const state = this.getSnapshot()
+    const creating = this.creating
+    ++this.generation
+    if (this.running !== undefined) this.disposeStream(this.running.stream)
+    this.running = undefined
+    this.observable.publish({ ...state, phase: 'closing', error: undefined })
+    let chatId = state.chatId
+    if (creating !== undefined) {
+      const created = await creating
+      if (created.ok) chatId = created.value.chatId
+    }
+    if (chatId !== undefined) {
+      const result = await this.invoke(() => this.remote.close({ chatId: chatId! }))
+      if (!result.ok && result.error.code !== 'side_chat_not_found') {
+        this.observable.publish({ ...this.getSnapshot(), phase: 'error', chatId, error: { ...result.error, operation: 'close' } })
+        return result
+      }
+    }
+    this.pendingRequest = undefined
+    this.releaseParent?.()
+    this.releaseParent = undefined
+    this.observable.publish(INITIAL)
     return success(undefined)
   }
-
-  private bindingTarget(): SideChatActionResult<SideChatSessionBinding> {
-    const state = this.getSnapshot()
-    const binding = this.lease?.binding
-    if (binding === undefined || state.childSessionId !== binding.sessionId
-      || !['ready', 'running', 'needs-input', 'needs-approval'].includes(state.phase)) {
-      return failure(localError('invalid_request', 'The Side Chat is not accepting messages.', false))
-    }
-    return success(binding)
+  private fail(issue: SideChatWireError, operation: 'create' | 'prompt'): SideChatActionResult {
+    this.observable.publish({ ...this.getSnapshot(), phase: 'error', error: { ...issue, operation } })
+    return failure(issue)
   }
-
-  private attachLease(lease: SideChatSessionLease, expectedSessionId: SessionId): void {
-    if (lease.sessionId !== expectedSessionId || lease.binding.sessionId !== expectedSessionId) {
-      lease.release()
-      throw new Error('The opened Session does not match the Side Chat child.')
-    }
-    this.detachLease()
-    this.lease = lease
-    this.childUnsubscribe = lease.binding.subscribe(() => { this.updateFromChild() })
-    this.updateFromChild()
+  private disposeStream(stream: SideChatStream): void {
+    try { stream.dispose() }
+    catch { /* A broken carrier must not prevent the explicit Host cancel/close RPC or parent release. */ }
   }
-
-  private detachLease(): void {
-    this.childUnsubscribe?.()
-    this.childUnsubscribe = undefined
-    this.lease?.release()
-    this.lease = undefined
-  }
-
-  private updateFromChild(): void {
-    const state = this.getSnapshot()
-    const snapshot = this.lease?.binding.getSnapshot()
-    if (snapshot === undefined || ['closed', 'closing', 'error'].includes(state.phase)) return
-    if (snapshot.status === 'failed') {
-      this.fail(localError('side_chat_prompt_failed', 'The Side Chat turn failed.'), 'prompt')
-      return
-    }
-    this.publish({ ...state, phase: phaseOf(snapshot), error: undefined })
-  }
-
-  private fail(
-    error: SideChatWireError,
-    operation: SideChatClientError['operation'],
-    patch: Partial<SideChatState> = {},
-  ): void {
-    this.publish({
-      ...this.getSnapshot(),
-      ...patch,
-      phase: 'error',
-      error: { ...error, operation },
-    })
-  }
-
-  private async invoke<Result extends { readonly ok: boolean }>(
-    operation: () => Promise<Result>,
-  ): Promise<Result | { readonly ok: false; readonly error: SideChatWireError }> {
-    try {
-      return await operation()
-    } catch {
-      return { ok: false, error: localError('transport_error', 'The Side Chat connection was interrupted.') }
-    }
-  }
-
-  private reset(): void {
-    this.detachLease()
-    this.closeRequested = false
-    this.publish(INITIAL_STATE)
-  }
-
-  private publish(state: SideChatState): void {
-    this.observable.publish(Object.freeze(state))
+  private async invoke<T>(operation: () => Promise<SideChatResult<T>>): Promise<SideChatResult<T>> {
+    try { return await operation() }
+    catch (cause) { return failure(localError(cause instanceof Error ? cause.message : String(cause), 'transport_error', true)) }
   }
 }

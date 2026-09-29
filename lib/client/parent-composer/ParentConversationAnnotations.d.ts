@@ -1,5 +1,6 @@
 import { type ElementType, type ReactNode } from 'react';
-import type { Rc6ClientContext } from '../rc6/context.js';
+import type { DshClientContext } from '../dsh/context.js';
+import { SessionId } from '../../shared/contracts.js';
 import { SIDE_CHAT_MESSAGES } from '../panel/messages.js';
 import { type ParentComposerInputSnapshot } from './add-to-conversation.js';
 type Locale = keyof typeof SIDE_CHAT_MESSAGES;
@@ -24,5 +25,5 @@ export declare function ParentComposerAnnotations({ input, onRemove, locale, }: 
 /** Wrap DSH's own user renderer only when this plugin's durable prefix exists. */
 export declare function annotatedUserMessageRenderer(Original: UserNodeRenderer): (props: UserNodeProps) => ReactNode;
 /** Mount the composer capsule and a thin wrapper around DSH's user renderers. */
-export declare function mountParentConversationAnnotations(ctx: Rc6ClientContext, removeAnnotations: () => void): () => void;
+export declare function mountParentConversationAnnotations(ctx: DshClientContext, removeAnnotations: (sessionId: SessionId) => void): () => void;
 export {};

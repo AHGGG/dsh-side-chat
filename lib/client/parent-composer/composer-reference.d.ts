@@ -1,49 +1,23 @@
 import type { Context } from '@deepseek-ai/cordis';
-export declare const LEGACY_REFERENCE_PLACEHOLDER = "\uFFFC";
-export interface ParentComposerOccurrence {
-    readonly occurrenceId: number;
-    readonly source: string;
-    readonly ref: string;
-    readonly offset: number;
-    /** Occupied projection length (display text through 0.1.1, clipboard text in 0.1.2). */
-    readonly length?: number;
-    /** Insert-time display label, present in current DSH input snapshots. */
-    readonly label?: string;
-    /** Draft-persistence projection cached by current DSH input snapshots. */
-    readonly clipboardText?: string;
-    readonly appearance?: 'session' | 'file' | 'folder';
-}
-export interface ParentComposerInputSnapshot {
-    readonly draft: string;
-    readonly draftRev: number;
-    readonly occurrences: readonly ParentComposerOccurrence[];
-}
-export interface ParentComposerSpan {
-    readonly start: number;
-    readonly end: number;
-    readonly draftRev: number;
-}
+import type { InputState, ReferenceInsert, SessionInput, TokenSpan } from '@deepseek-ai/dsh-client-ui-conversation/client';
+export type ParentComposerOccurrence = InputState['occurrences'][number];
+export type ParentComposerSpan = TokenSpan;
+export type ParentComposerInputSnapshot = Pick<InputState, 'draft' | 'draftRev' | 'occurrences'> & Partial<Pick<InputState, 'phase'>>;
+/** DSH 0.2's Lexical editor: published offsets are clipboard coordinates,
+ * mutation spans count each reference chip as one character. */
 export interface ParentComposerInput {
     readonly state: {
         getSnapshot(): ParentComposerInputSnapshot;
-        subscribe?(listener: () => void): () => void;
+        subscribe(listener: () => void): () => void;
     };
-    /** DSH 0.1.2's Lexical editor projects each reference as one mutation coordinate. */
-    readonly referenceMode?: 'text' | 'lexical';
     setDraft(text: string): void;
-    /** Atomic plain-text replacement supplied by Side Chat's scoped input-event adapter. */
-    replaceText?(text: string, span: ParentComposerSpan): boolean;
-    insertReference(reference: {
-        readonly source: string;
-        readonly ref: string;
-        readonly label: string;
-        readonly appearance?: 'session' | 'file' | 'folder';
-        readonly clipboardText: string;
-    }, span: ParentComposerSpan): boolean;
+    replaceText(text: string, span: ParentComposerSpan): boolean;
+    insertReference(reference: ReferenceInsert, span: ParentComposerSpan): boolean;
+    notify?: SessionInput['notify'];
 }
 export interface ParentConversationService {
     readonly input: {
-        for(scope: Context): ParentComposerInput;
+        for(scope: Context): SessionInput;
     };
 }
 export interface SelectionReferenceSource {
@@ -57,25 +31,13 @@ export interface SelectionReferenceSource {
         serialize(ref: string, signal: AbortSignal): Promise<string>;
     };
 }
-export interface OccurrenceRange {
-    readonly start: number;
-    readonly end: number;
-}
-export declare function referenceDisplayText(label: string): string;
-/**
- * Resolve one occurrence's occupied draft range across both DSH reference
- * representations: current full `@label` text with `length`, and the legacy
- * one-code-unit U+FFFC placeholder without it.
- */
-export declare function occurrenceRange(snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, expectedLabel: string): OccurrenceRange | undefined;
+export declare function occurrenceRange(snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, expectedLabel: string): {
+    start: number;
+    end: number;
+} | undefined;
 export declare function occurrenceMatchesDraft(snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, expectedLabel: string): boolean;
-/** Convert one published occurrence range to the host input machine's mutation coordinates. */
-export declare function occurrenceEditSpan(input: ParentComposerInput, snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, options?: {
+/** Convert a reference's clipboard range to the editor's atomic coordinates. */
+export declare function occurrenceEditSpan(_input: ParentComposerInput, snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, options?: {
     readonly consumeFollowingSeparator?: boolean;
 }): ParentComposerSpan | undefined;
-/** Find the exact occurrence minted by one synchronous insertReference call. */
 export declare function newlyInsertedOccurrence(before: ParentComposerInputSnapshot, after: ParentComposerInputSnapshot, source: string, ref: string): ParentComposerOccurrence | undefined;
-/** Remove one occurrence's display range and, optionally, its separating ASCII gap. */
-export declare function draftWithoutOccurrence(snapshot: ParentComposerInputSnapshot, occurrence: ParentComposerOccurrence, expectedLabel: string, options?: {
-    readonly consumeAdjacentSpace?: boolean;
-}): string | undefined;

@@ -1,4 +1,1 @@
-export {
-  ArchivedForkSideChatService,
-  resolveArchivedForkBoundary,
-} from './archived-fork-service.js'
+export { ReadOnlySideChatService, completedContextBoundary } from './read-only-chat-service.js'

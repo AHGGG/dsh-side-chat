@@ -14,7 +14,7 @@ export interface SideChatMessages {
   readonly temporary: string
   readonly referenceOnly: string
   readonly cannotReopen: string
-  readonly sharedWorkspace: string
+  readonly readOnly: string
   readonly retry: string
   readonly genericError: string
   readonly closeError: string
@@ -34,10 +34,10 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     removeSelection: 'Remove annotation',
     expand: 'Expand',
     collapse: 'Collapse',
-    temporary: 'Archived when closed; history remains on disk',
-    referenceOnly: 'Inherits the complete parent conversation prefix',
-    cannotReopen: 'No reopen action',
-    sharedWorkspace: 'Shares the parent workspace',
+    temporary: 'Temporary; discarded when closed or reloaded',
+    referenceOnly: 'Read-only parent context; no Session copy',
+    cannotReopen: 'Add to conversation to keep this discussion',
+    readOnly: 'No tools or file changes',
     retry: 'Retry',
     genericError: 'Side Chat error',
     closeError: 'Could not close the Side Chat',
@@ -55,10 +55,10 @@ export const SIDE_CHAT_MESSAGES: Readonly<Record<'en' | 'zh-CN', SideChatMessage
     removeSelection: '移除引用',
     expand: '展开',
     collapse: '收起',
-    temporary: '关闭时归档；历史仍保存在磁盘上',
-    referenceOnly: '完整继承父会话对话前缀',
-    cannotReopen: '不提供重新打开操作',
-    sharedWorkspace: '与父会话共享工作区',
+    temporary: '临时对话；关闭或刷新后丢弃',
+    referenceOnly: '只读父会话上下文；不复制 Session',
+    cannotReopen: '添加到主对话以保留讨论内容',
+    readOnly: '不使用工具，不修改文件',
     retry: '重试',
     genericError: '侧边对话错误',
     closeError: '无法关闭侧边对话',

@@ -43,6 +43,10 @@ function excluded(node: Text, root: HTMLElement): boolean {
     '[data-selection-exclude]',
     '[data-side-chat-panel]',
     '[aria-hidden="true"]',
+    '[hidden]',
+    '[inert]',
+    'script',
+    'style',
     'button',
     'textarea',
     'input',
@@ -56,7 +60,7 @@ function acceptedTextNodes(anchor: HTMLElement, root: HTMLElement): Text[] {
   let current = walker.nextNode()
   while (current !== null) {
     const text = current as Text
-    if (!excluded(text, root)) nodes.push(text)
+    if (!excluded(text, root) && anchorOf(text) === anchor) nodes.push(text)
     current = walker.nextNode()
   }
   return nodes
@@ -82,7 +86,7 @@ function selectedSlice(range: Range, node: Text): { start: number; end: number; 
 }
 
 /**
- * Locked-commit fallback capture. It intentionally fails closed unless every
+ * Capture against DSH's public Chat anchors. Fail closed unless every
  * selected text node belongs to one public Chat anchor.
  */
 export async function captureDomConversationSelection(input: {
@@ -107,7 +111,7 @@ export async function captureDomConversationSelection(input: {
   if (startAnchor === null || endAnchor === null || startAnchor !== endAnchor) {
     throw new SelectionValidationError(
       'selection_crosses_unsupported_nodes',
-      'This compatibility adapter supports a selection inside one message only.',
+      'Select a passage inside one message.',
     )
   }
   const descriptor = input.resolver.resolve(startAnchor)

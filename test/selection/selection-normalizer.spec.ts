@@ -51,7 +51,7 @@ describe('selection normalization', () => {
     expect(() => finalizeConversationSelection(input([FRAGMENT, { ...FRAGMENT, nodeKey: 'node-2' }])))
       .toThrow(expect.objectContaining({ code: 'selection_crosses_unsupported_nodes' }))
     expect(() => finalizeConversationSelection(input([{ ...FRAGMENT, settled: false }])))
-      .toThrow(expect.objectContaining({ code: 'fork_unavailable' }))
+      .toThrow(expect.objectContaining({ code: 'context_unavailable' }))
     expect(() => finalizeConversationSelection(input([FRAGMENT], '  ')))
       .toThrow(expect.objectContaining({ code: 'selection_empty' }))
     expect(() => finalizeConversationSelection(input([FRAGMENT], 'x'.repeat(16 * 1024 + 1))))

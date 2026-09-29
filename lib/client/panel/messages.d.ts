@@ -14,7 +14,7 @@ export interface SideChatMessages {
     readonly temporary: string;
     readonly referenceOnly: string;
     readonly cannotReopen: string;
-    readonly sharedWorkspace: string;
+    readonly readOnly: string;
     readonly retry: string;
     readonly genericError: string;
     readonly closeError: string;

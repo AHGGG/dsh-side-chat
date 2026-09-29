@@ -1,22 +1,23 @@
 # DSH compatibility
 
-`package.json` is the source of truth for DSH compatibility. The exact release trains in `dshCompatibility.testedVersions` are mirrored by every DSH `peerDependencies` entry, so package managers warn only for versions the plugin has not validated.
+`package.json` is the source of truth for DSH compatibility. Side Chat targets only DSH `0.2.0-rc.1` (published under npm's `next` tag, not `latest`). Its exact version is mirrored in `dshCompatibility.testedVersions`, DSH peer and development dependencies, and the DSH Store-compatible `dsh.compatibility` map. The plugin makes no promise of compatibility with older or future prerelease trains.
 
-Because DSH is still prerelease software, the package does not claim an open-ended semver range. Development dependencies use the newest tested train for type checking and builds, while clean-profile verification installs and probes every declared train independently without mixing DSH package versions. The DSH Store-compatible `dsh.compatibility` map mirrors the same exact release list.
+Clean-profile verification installs the declared train and probes the packed Host, Client and Remote entries without mixing DSH package versions. This import probe does not replace an interactive Web-client smoke test.
 
 The implementation uses these published APIs:
 
-- Host Agent lookup/create and ordinary Session seeds;
-- Agent preset composition;
-- workspace attach and archive;
-- concrete Client `Session.open()`;
-- the combined `SessionFace` snapshot on DSH 0.1.0/0.1.1;
-- Session Controller lifecycle plus Conversation `chat` target and UI Session interactions on DSH 0.1.2;
-- `data-chat-*` DOM anchors;
-- Typert Remote mounting;
-- the additive `shell.overlay` slot.
+- read-only Host `sessionQuery.observeSession` leases, `foldSurface`, `messageProjections`, and `deriveEventMessage` for a completed parent-context snapshot;
+- `llm.prepareCall`, cancellable provider streams, and `BlockAssembler` for direct text replies, without an Agent, tools, or a new Session;
+- Typert streaming RPCs with strict item codecs, invocation cancellation, and peer-owned temporary discussions;
+- Client Session Controller references (`retain`/`release`) to pin only the existing parent without changing the main view;
+- explicitly activated parent Conversation `chat` targets for selection anchors and completed-turn boundaries;
+- the DSH 0.2 Lexical input facade and atomic reference-edit coordinates;
+- Workspace navigation, `data-chat-*` DOM anchors and the `shell.overlay` slot;
+- Typert Remote mounting and lazy codec schemas.
 
-A version-neutral adapter combines the split 0.1.2 stores into the surface Side Chat already consumes. The Host fork path likewise selects the legacy `seedLength` metadata or the 0.1.2 `isSeeded`/`inheritedEventCount` contract at runtime.
+The current Client adapter lives in `src/client/dsh/`. Older Session snapshot shapes, old composer representations, and old draft-storage formats are not supported. `ChatSnapshot.legacy` is still used because it is DSH 0.2's published transcript projection, not because older DSH runtimes are supported.
+
+See [verification.md](verification.md) for the handoff checklist for the session-free refactor. Build and runtime verification are left to the maintainer; the coding assistant did not run them for this refactor. Existing archived Side Chat Sessions are left untouched; the refactor creates no new ones.
 
 ## Runtime artifacts
 
@@ -32,4 +33,4 @@ pnpm check
 pnpm clean-profile:verify
 ```
 
-The update command verifies that every direct DSH package exists at the requested version, preserves all previously tested trains, appends a new requested train, synchronizes both compatibility manifests plus peer/development dependency metadata, and regenerates a clean lockfile so prerelease trains cannot mix. CI derives its compatibility matrix directly from `dshCompatibility.testedVersions`.
+The update command verifies that every direct DSH package exists at the requested version, replaces the tested train, synchronizes both compatibility manifests plus peer/development dependency metadata, and regenerates a clean lockfile. If a package was renamed or removed, update the imports and dependencies before retrying. For freshly published trains, pnpm may add exact package versions to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`; review that list before committing. CI checks only the declared train.

@@ -1,5 +1,4 @@
-import type { ConversationNode } from '@deepseek-ai/dsh-client-ui-conversation/client';
-import type { SessionId } from '../../shared/contracts.js';
+import type { SideChatId, SideChatMessage } from '../../shared/contracts.js';
 import type { ParentComposerInput, SelectionReferenceSource } from './composer-reference.js';
 export declare const SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE = "dsh-side-chat-conversation";
 export interface ReferencedConversationMessage {
@@ -9,7 +8,7 @@ export interface ReferencedConversationMessage {
 /** One immutable snapshot carried by the parent composer's conversation label. */
 export interface ReferencedSideChatConversation {
     readonly version: 1;
-    readonly conversationId: SessionId;
+    readonly conversationId: string;
     readonly title: string;
     readonly conversation: readonly ReferencedConversationMessage[];
 }
@@ -17,12 +16,11 @@ export interface ParsedReferencedConversationPrompt {
     readonly reference: ReferencedSideChatConversation;
     readonly message: string;
 }
-/** Project exactly the user/assistant history visible in the Side Chat modal. */
+/** Capture only the plugin transcript, not the parent context or model reasoning. */
 export declare function referencedSideChatConversation(input: {
-    readonly conversationId: SessionId;
+    readonly conversationId: SideChatId;
     readonly title: string;
-    readonly nodes: readonly ConversationNode[];
-    readonly inheritedThroughSeq: number;
+    readonly messages: readonly SideChatMessage[];
 }): ReferencedSideChatConversation;
 /** Durable model-facing form of the referenced conversation label. */
 export declare function serializeReferencedConversation(reference: ReferencedSideChatConversation): string;

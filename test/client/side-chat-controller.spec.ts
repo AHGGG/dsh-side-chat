@@ -1,252 +1,160 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SideChatController } from '../../src/client/side-chat-controller.js'
-import { SessionId, type ConversationSelection } from '../../src/shared/contracts.js'
-import { deferred, FakeClientSessions, FakeRemote } from '../fixtures/client-runtime.js'
+import { SessionId, SideChatId, type ConversationSelection } from '../../src/shared/contracts.js'
+import { deferred, FakeClientSessions, FakeRemote, MODEL } from '../fixtures/client-runtime.js'
 
-function setup() {
+const selection: ConversationSelection = {
+  parentSessionId: SessionId('parent-1'), text: 'Selected <text>', atSeq: 7, fragments: [],
+  rect: { x: 0, y: 0, width: 10, height: 10, viewportWidth: 800, viewportHeight: 600 },
+}
+function fixture() {
   const remote = new FakeRemote()
   const sessions = new FakeClientSessions()
   const controller = new SideChatController(remote, sessions)
   return { remote, sessions, controller }
 }
-
-function selection(): ConversationSelection {
-  return {
-    parentSessionId: SessionId('parent-1'),
-    fragments: [],
-    text: 'selected text',
-    atSeq: 4,
-    rect: { x: 1, y: 1, width: 10, height: 10, viewportWidth: 100, viewportHeight: 100 },
-  }
-}
-
-describe('SideChatController', () => {
-  it('creates lazily on first send and keeps the parent current', async () => {
-    const { controller, remote, sessions } = setup()
-    expect(controller.openDraft()).toEqual({ ok: true, value: undefined })
+describe('read-only Side Chat controller', () => {
+  it('creates nothing until send, pins only the parent, and sends plain question text', async () => {
+    const { controller, remote, sessions } = fixture()
+    expect(controller.openDraft({ selection }).ok).toBe(true)
     expect(remote.createCalls).toHaveLength(0)
-
-    expect((await controller.sendFirst('Why this choice?')).ok).toBe(true)
-    expect(remote.createCalls).toEqual([{ parentSessionId: 'parent-1', atSeq: 4 }])
-    expect(sessions.retainCalls).toEqual([SessionId('child-1')])
-    expect(sessions.current).toBe('parent-1')
-    expect(sessions.binding.calls[0]?.kind).toBe('prompt')
-  })
-
-  it('applies a draft model choice only to the child create request', async () => {
-    const { controller, remote, sessions } = setup()
-    controller.openDraft()
-
-    expect(await controller.selectModel({
-      provider: 'openai',
-      model: 'gpt-fast',
-      reasoningEffort: 'low',
-    })).toEqual({
-      ok: true,
-      value: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
-    })
-    expect((await controller.sendFirst('Use the faster model')).ok).toBe(true)
-
-    expect(remote.createCalls).toEqual([{
-      parentSessionId: 'parent-1',
-      atSeq: 4,
-      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
-    }])
-    expect(remote.selectModelCalls).toHaveLength(0)
-    expect(sessions.modelPreference).toEqual({
-      provider: 'openai',
-      model: 'gpt-fast',
-      reasoningEffort: 'low',
-    })
-    expect(sessions.current).toBe('parent-1')
-  })
-
-  it('switches the live child model without opening or changing the parent', async () => {
-    const { controller, remote, sessions } = setup()
-    controller.openDraft()
-    await controller.sendFirst('first')
-
-    expect(await controller.selectModel({ provider: 'deepseek', model: 'deepseek-reasoner' }))
-      .toEqual({
-        ok: true,
-        value: { provider: 'deepseek', model: 'deepseek-reasoner' },
-      })
-    expect(remote.selectModelCalls).toEqual([{
-      childSessionId: 'child-1',
-      provider: 'deepseek',
-      model: 'deepseek-reasoner',
-    }])
-    expect(controller.getSnapshot().modelSelection).toEqual({
-      provider: 'deepseek',
-      model: 'deepseek-reasoner',
-    })
-    expect(sessions.modelPreference).toEqual({
-      provider: 'deepseek',
-      model: 'deepseek-reasoner',
-    })
-    expect(sessions.current).toBe('parent-1')
-  })
-
-  it('restores the last explicit model choice in a new Side Chat globally', async () => {
-    const { controller, sessions } = setup()
-    controller.openDraft()
-    await controller.selectModel({
-      provider: 'deepseek',
-      model: 'deepseek-v4-pro',
-      reasoningEffort: 'off',
-    })
+    expect(sessions.parentsRetained).toBe(1)
+    expect((await controller.sendFirst('Why <this> & that?')).ok).toBe(true)
+    expect(remote.createCalls[0]).toMatchObject({ parentSessionId: 'parent-1', atSeq: 7, selectedText: selection.text })
+    expect(remote.streamCalls[0]?.text).toBe('Why <this> & that?')
+    expect(controller.getSnapshot().messages[0]).toMatchObject({ role: 'user', text: 'Why <this> & that?', selectedText: selection.text })
+    expect(sessions.opened).toEqual([])
     await controller.close()
-
-    sessions.current = SessionId('parent-2')
-    expect(controller.openDraft()).toEqual({ ok: true, value: undefined })
-    expect(controller.getSnapshot()).toMatchObject({
-      parentSessionId: 'parent-2',
-      modelSelection: {
-        provider: 'deepseek',
-        model: 'deepseek-v4-pro',
-        reasoningEffort: 'off',
-      },
-    })
+    expect(remote.streams[0]?.disposed).toBe(true)
+    expect(sessions.parentsRetained).toBe(0)
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'closed', messages: [] })
   })
-
-  it('does not remember a model that was only inherited during initialization', () => {
-    const { controller, sessions } = setup()
-    controller.openDraft()
-
-    expect(controller.initializeModel({
-      provider: 'deepseek',
-      model: 'deepseek-v4-pro',
-      reasoningEffort: 'max',
-    }).ok).toBe(true)
-    expect(sessions.modelPreference).toBeUndefined()
-  })
-
-  it('revalidates a selected message before creating', async () => {
-    const { controller, remote, sessions } = setup()
-    expect(controller.openDraft({ selection: selection() }).ok).toBe(true)
-    sessions.selectionCurrent = false
-
-    expect(await controller.sendFirst('question')).toMatchObject({
-      ok: false,
-      error: { code: 'selection_stale' },
-    })
-    expect(remote.createCalls).toHaveLength(0)
-  })
-
-  it('removes an unsent selection from the first child prompt', async () => {
-    const { controller, sessions } = setup()
-    expect(controller.openDraft({ selection: selection() }).ok).toBe(true)
-
-    expect(controller.clearSelection()).toEqual({ ok: true, value: undefined })
-    expect(controller.getSnapshot().selection).toBeUndefined()
-    expect((await controller.sendFirst('question')).ok).toBe(true)
-    expect(sessions.binding.calls[0]?.args[0]).toEqual([{ type: 'text', text: 'question' }])
-  })
-
-  it('routes child interactions through the captured child binding', async () => {
-    const { controller, sessions } = setup()
-    controller.openDraft()
-    await controller.sendFirst('first')
-    await controller.send('later')
-    await controller.send('steer now', 'steer')
-    await controller.updateQueue('item-1', { kind: 'remove' })
-    await controller.cancel()
-    await controller.respondApproval('approval-1', 'decline')
-    await controller.respondQuestion('question-1', {
-      answers: [{ id: 'question', selected: [], custom: 'answer' }],
-    })
-
-    expect(sessions.binding.calls.slice(1).map(call => call.kind)).toEqual([
-      'prompt', 'prompt', 'queue', 'cancel', 'approval', 'question',
-    ])
-    expect(sessions.binding.calls.every(call => call.args.at(-1) === 'child-1')).toBe(true)
-  })
-
-  it('closes a running child directly through the Host', async () => {
-    const { controller, sessions, remote } = setup()
-    controller.openDraft()
-    await controller.sendFirst('first')
-    sessions.binding.setStatus('running')
-
-    expect(await controller.close()).toEqual({ ok: true, value: undefined })
-    expect(remote.closeCalls).toEqual([{ childSessionId: 'child-1' }])
-    expect(sessions.released).toBe(1)
-    expect(controller.getSnapshot().phase).toBe('closed')
-  })
-
-  it('waits for an in-flight create and closes the returned child', async () => {
-    const { controller, remote } = setup()
-    const pending = deferred<Awaited<ReturnType<FakeRemote['create']>>>()
-    remote.createDeferred = pending
-    controller.openDraft()
-    const sending = controller.sendFirst('first')
-    await Promise.resolve()
-    const closing = controller.close()
-
-    pending.resolve({
-      ok: true,
-      value: {
-        parentSessionId: SessionId('parent-1'),
-        childSessionId: SessionId('child-1'),
-        boundarySeq: 5,
-        inheritedThroughSeq: 5,
-      },
-    })
-    await Promise.all([sending, closing])
-    expect(remote.closeCalls).toEqual([{ childSessionId: 'child-1' }])
-    expect(controller.getSnapshot().phase).toBe('closed')
-  })
-
-  it('keeps a created child available for close when opening fails', async () => {
-    const { controller, remote, sessions } = setup()
-    sessions.failRetain = true
-    controller.openDraft()
-
-    expect(await controller.sendFirst('first')).toMatchObject({
-      ok: false,
-      error: { code: 'side_chat_open_failed' },
-    })
-    expect(controller.getSnapshot()).toMatchObject({ phase: 'error', childSessionId: 'child-1' })
-    expect((await controller.close()).ok).toBe(true)
-    expect(remote.closeCalls).toEqual([{ childSessionId: 'child-1' }])
-  })
-
-  it('shows a close failure and retries the same simple close action', async () => {
-    const { controller, remote } = setup()
-    controller.openDraft()
-    await controller.sendFirst('first')
-    remote.closeResults.push({
-      ok: false,
-      error: { code: 'side_chat_destroy_failed', message: 'still alive', recoverable: true },
-    })
-
-    expect((await controller.close()).ok).toBe(false)
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: 'error',
-      error: { operation: 'close' },
-    })
-    expect((await controller.retry()).ok).toBe(true)
-    expect(remote.closeCalls).toHaveLength(2)
-    expect(controller.getSnapshot().phase).toBe('closed')
-  })
-
-  it('rejects a duplicate first send while creation is in flight', async () => {
-    const { controller, remote } = setup()
-    const pending = deferred<Awaited<ReturnType<FakeRemote['create']>>>()
-    remote.createDeferred = pending
-    controller.openDraft()
-    const first = controller.sendFirst('first')
-    expect(await controller.sendFirst('duplicate')).toMatchObject({ ok: false, error: { code: 'invalid_request' } })
-    pending.resolve({
-      ok: true,
-      value: {
-        parentSessionId: SessionId('parent-1'),
-        childSessionId: SessionId('child-1'),
-        boundarySeq: 5,
-        inheritedThroughSeq: 5,
-      },
-    })
-    await first
+  it('streams updates and keeps subsequent questions separate from the initial annotation', async () => {
+    const { controller, remote } = fixture()
+    controller.openDraft({ selection })
+    await controller.sendFirst('Why?')
+    remote.streams[0]!.push({ type: 'content', text: 'An answer', reasoning: 'A reason' })
+    remote.streams[0]!.finish()
+    await vi.waitFor(() => expect(controller.getSnapshot().phase).toBe('ready'))
+    expect(controller.getSnapshot().messages[1]).toMatchObject({ text: 'An answer', reasoning: 'A reason', status: 'complete' })
+    await controller.send('And next?')
     expect(remote.createCalls).toHaveLength(1)
+    expect(controller.getSnapshot().messages[2]?.selectedText).toBeUndefined()
+    await controller.dispose()
+  })
+  it('refuses stale selections without creating a discussion', async () => {
+    const { controller, remote, sessions } = fixture()
+    controller.openDraft({ selection })
+    sessions.selectionCurrent = false
+    expect((await controller.sendFirst('Why?')).ok).toBe(false)
+    expect(remote.createCalls).toHaveLength(0)
+    await controller.dispose()
+  })
+  it('closes a late create without ever starting a model stream', async () => {
+    const { controller, remote } = fixture()
+    remote.createDeferred = deferred<Awaited<ReturnType<FakeRemote['create']>>>()
+    controller.openDraft()
+    const sent = controller.sendFirst('Why?')
+    const closed = controller.close()
+    remote.createDeferred.resolve({ ok: true, value: { parentSessionId: SessionId('parent-1'),
+      chatId: SideChatId('late'), boundarySeq: 7, modelSelection: MODEL } })
+    expect((await sent).ok).toBe(false)
+    expect((await closed).ok).toBe(true)
+    expect(remote.closeCalls).toEqual([{ chatId: 'late' }])
+    expect(remote.streamCalls).toHaveLength(0)
+  })
+  it('retries an unobserved admission with the same request identity and captured context', async () => {
+    const { controller, remote, sessions } = fixture()
+    remote.autoStart = false
+    controller.openDraft({ selection })
+    const first = controller.sendFirst('Question')
+    await vi.waitFor(() => expect(remote.streams).toHaveLength(1))
+    remote.streams[0]!.push({ type: 'error', error: { code: 'transport_error', message: 'Retry delivery', recoverable: true } })
+    expect((await first).ok).toBe(false)
+    sessions.lastSeq = undefined
+    sessions.selectionCurrent = false
+    remote.autoStart = true
+    expect((await controller.retry()).ok).toBe(true)
+    expect(remote.createCalls).toHaveLength(1)
+    expect(remote.streamCalls[1]?.requestId).toBe(remote.streamCalls[0]?.requestId)
+    await controller.dispose()
+  })
+  it('does not replay an admitted question after a model failure', async () => {
+    const { controller, remote } = fixture()
+    controller.openDraft()
+    await controller.sendFirst('Question')
+    remote.streams[0]!.push({ type: 'error', error: { code: 'side_chat_prompt_failed', message: 'Provider failed', recoverable: true } })
+    await vi.waitFor(() => expect(controller.getSnapshot().error?.message).toBe('Provider failed'))
+    expect(controller.getSnapshot().error?.recoverable).toBe(false)
+    expect((await controller.retry()).ok).toBe(false)
+    expect(remote.streamCalls).toHaveLength(1)
+    expect((await controller.send('Try a different question')).ok).toBe(true)
+    await controller.dispose()
+  })
+  it('cancels the carrier before admission and keeps the unsent draft', async () => {
+    const { controller, remote } = fixture()
+    remote.autoStart = false
+    controller.openDraft()
+    const sent = controller.sendFirst('Keep me')
+    await vi.waitFor(() => expect(remote.streams).toHaveLength(1))
+    await controller.cancel()
+    expect((await sent).ok).toBe(false)
+    expect(remote.streams[0]?.disposed).toBe(true)
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'ready', draft: 'Keep me', messages: [] })
+    remote.autoStart = true
+    expect((await controller.sendFirst('Keep me')).ok).toBe(true)
+    expect(remote.streamCalls[1]?.requestId).not.toBe(remote.streamCalls[0]?.requestId)
+    await controller.dispose()
+  })
+  it('stops a partial reply without calling any parent Agent controls', async () => {
+    const { controller, remote, sessions } = fixture()
+    controller.openDraft()
+    await controller.sendFirst('Question')
+    remote.streams[0]!.push({ type: 'content', text: 'Partial', reasoning: '' })
+    await vi.waitFor(() => expect(controller.getSnapshot().messages[1]?.text).toBe('Partial'))
+    await controller.cancel()
+    await vi.waitFor(() => expect(controller.getSnapshot().messages[1]?.status).toBe('stopped'))
+    expect(remote.cancelCalls).toEqual([{ chatId: 'side-chat-1' }])
+    expect(sessions.current).toBe('parent-1')
+    expect(sessions.opened).toEqual([])
+    await controller.dispose()
+  })
+  it('keeps model selection local to the discussion and ignores late results after close', async () => {
+    const { controller, remote, sessions } = fixture()
+    controller.openDraft()
+    await controller.selectModel({ provider: 'saved', model: 'saved-model' })
+    expect(sessions.modelPreference?.model).toBe('saved-model')
+    await controller.sendFirst('Question')
+    await controller.cancel()
+    const selected = deferred<Awaited<ReturnType<FakeRemote['selectModel']>>>()
+    vi.spyOn(remote, 'selectModel').mockImplementation(() => selected.promise)
+    const changed = controller.selectModel({ provider: 'late', model: 'late' })
+    await controller.close()
+    controller.openDraft()
+    selected.resolve({ ok: true, value: { selected: { provider: 'late', model: 'late', reasoningEffort: undefined } } })
+    await changed
+    expect(controller.getSnapshot().modelSelection?.model).not.toBe('late')
+    await controller.dispose()
+  })
+  it('still closes the Host discussion when carrier disposal throws', async () => {
+    const { controller, remote, sessions } = fixture()
+    controller.openDraft()
+    await controller.sendFirst('Question')
+    const stream = remote.streams[0]!
+    const dispose = stream.dispose.bind(stream)
+    vi.spyOn(stream, 'dispose').mockImplementation(() => { dispose(); throw new Error('Carrier already closed') })
+    expect((await controller.close()).ok).toBe(true)
+    expect(remote.closeCalls).toEqual([{ chatId: 'side-chat-1' }])
+    expect(sessions.parentsRetained).toBe(0)
+  })
+  it('retains a failed close for retry without resending any prompt', async () => {
+    const { controller, remote } = fixture()
+    controller.openDraft()
+    await controller.sendFirst('Question')
+    remote.closeResults.push({ ok: false, error: { code: 'transport_error', message: 'offline', recoverable: true } })
+    expect((await controller.close()).ok).toBe(false)
+    expect(controller.getSnapshot().error?.operation).toBe('close')
+    expect((await controller.retry()).ok).toBe(true)
+    expect(remote.streamCalls).toHaveLength(1)
   })
 })

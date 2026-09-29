@@ -1,9 +1,7 @@
 .dsh-side-chat-overlay,
 .dsh-side-chat-parent-annotation-dock,
 .dsh-side-chat-parent-user-message {
-  /* DSH rc.6 themes publish the semantic alias layer. Keep the legacy tokens
-     as fallbacks for older hosts instead of falling through to light colors
-     while the host has selected its dark palette. */
+  /* Use DSH's semantic theme aliases in both light and dark mode. */
   --side-chat-border: var(--dsw-alias-border-l2, var(--dsw-border, #d8d8de));
   --side-chat-bg: var(--dsw-alias-bg-layer-2, var(--dsw-surface, #ffffff));
   --side-chat-muted: var(--dsw-alias-label-tertiary, var(--dsw-text-muted, #62636a));
@@ -42,6 +40,13 @@
   background: var(--side-chat-bg);
   color: var(--side-chat-text);
   box-shadow: 0 12px 36px rgb(0 0 0 / 11%), 0 2px 8px rgb(0 0 0 / 6%);
+}
+
+.dsh-side-chat-controls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 
 .dsh-side-chat-conversation {
@@ -793,8 +798,7 @@
 
 /* The DSH occurrence remains the durable serialization carrier, while this
    plugin-owned capsule supplies the visible and interactive projection. */
-[data-composer-seat] [data-composer-chip="dsh-side-chat-selection"],
-[data-composer-seat] [data-decoration="chip"][title="__dsh_side_chat_annotations__"] {
+[data-composer-seat] [data-composer-chip="dsh-side-chat-selection"] {
   display: inline-block;
   width: var(--dsh-side-chat-parent-annotation-width, auto);
   box-sizing: border-box;
@@ -814,8 +818,8 @@
 }
 .dsh-side-chat-parent-annotation-dock > .dsh-side-chat-quote {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: var(--annotation-top, 16px);
+  left: var(--annotation-left, 16px);
   pointer-events: auto;
 }
 .dsh-side-chat-parent-user-message {
@@ -827,7 +831,7 @@
   gap: 8px;
 }
 .dsh-side-chat-parent-user-message > .dsh-side-chat-quote { align-self: flex-end; }
-/* rc.6 caps its inner user stack at 82%; give that percentage the full chat
+/* DSH caps its inner user stack at 82%; give that percentage the full chat
    column as its containing width instead of the annotation chip's shrink width. */
 .dsh-side-chat-parent-user-message-body { width: 100%; min-width: 0; }
 .dsh-side-chat-parent-user-message > .dsh-side-chat-quote .dsh-side-chat-quote-details {

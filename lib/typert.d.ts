@@ -1,37 +1,5 @@
-export declare const ARCHIVED_INVOCATIONS: {
-    id: string;
-    service: string;
-    namespace: string;
-    method: "create" | "close" | "selectModel";
-    implementation: string;
-    invocation: {
-        kind: "direct";
-    };
-    parameters: {
-        name: string;
-        wire: string;
-        source: "json";
-        codec: {
-            mode: "strict";
-            typeSymbol: string;
-            schema: {
-                parse(value: unknown): unknown;
-            };
-        };
-    }[];
-    result: {
-        mode: "strict";
-        typeSymbol: string;
-        schema: {
-            parse(value: unknown): unknown;
-        };
-    };
-    sourceLocation: {
-        file: string;
-        line: number;
-        column: number;
-    };
-}[];
+import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol';
+export declare const SIDE_CHAT_INVOCATIONS: InvocationDescriptor[];
 export declare const TYPERT: {
     package: string;
     face: string;
@@ -41,39 +9,6 @@ export declare const TYPERT: {
         events: never[];
         objects: never[];
     };
-    invocations: {
-        id: string;
-        service: string;
-        namespace: string;
-        method: "create" | "close" | "selectModel";
-        implementation: string;
-        invocation: {
-            kind: "direct";
-        };
-        parameters: {
-            name: string;
-            wire: string;
-            source: "json";
-            codec: {
-                mode: "strict";
-                typeSymbol: string;
-                schema: {
-                    parse(value: unknown): unknown;
-                };
-            };
-        }[];
-        result: {
-            mode: "strict";
-            typeSymbol: string;
-            schema: {
-                parse(value: unknown): unknown;
-            };
-        };
-        sourceLocation: {
-            file: string;
-            line: number;
-            column: number;
-        };
-    }[];
+    invocations: InvocationDescriptor[];
 };
 export default TYPERT;

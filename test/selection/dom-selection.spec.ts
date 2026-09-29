@@ -19,7 +19,7 @@ function resolver(anchor: HTMLElement) {
   }
 }
 
-describe('rc.6 DOM selection', () => {
+describe('DSH Chat DOM selection', () => {
   it('captures visible text inside one public Chat anchor', async () => {
     document.body.innerHTML = '<main id="root"><p data-chat-anchor-key="node-1" data-turn="turn-1" data-seq="4">hello <em>world</em><button>Copy</button></p></main>'
     const root = document.querySelector<HTMLElement>('#root')!
@@ -71,6 +71,20 @@ describe('rc.6 DOM selection', () => {
       parentSessionId: SessionId('parent-1'),
       resolver: { resolve: resolver },
     })).rejects.toMatchObject({ code: 'selection_crosses_unsupported_nodes' })
+  })
+
+  it('excludes hidden process text and nested anchors from captured offsets', async () => {
+    document.body.innerHTML = '<main id="root"><div data-chat-anchor-key="outer"><span hidden>Hidden</span><span data-chat-anchor-key="nested">Nested</span><p>Visible</p></div></main>'
+    const root = document.querySelector<HTMLElement>('#root')!
+    const range = document.createRange()
+    range.selectNodeContents(root.querySelector('p')!.firstChild!)
+    Object.defineProperty(range, 'getBoundingClientRect', { value: () => ({ x: 0, y: 0, width: 10, height: 10 }) })
+    const browserSelection = window.getSelection()!
+    browserSelection.removeAllRanges()
+    browserSelection.addRange(range)
+    const captured = await captureDomConversationSelection({ selection: browserSelection, conversationRoot: root,
+      parentSessionId: SessionId('parent-1'), resolver: { resolve: resolver } })
+    expect(captured.fragments[0]).toMatchObject({ startOffset: 0, endOffset: 7, text: 'Visible' })
   })
 
   it('never slices through a Unicode surrogate pair', async () => {

@@ -4,7 +4,11 @@ export type SessionId = string & {
     readonly [brand]: 'SessionId';
 };
 export declare function SessionId(value: string): SessionId;
-/** Provider/model choice owned by one Side Chat fork. */
+/** Plugin-local identity. It is never registered as a DSH Session. */
+export type SideChatId = string & {
+    readonly [brand]: 'SideChatId';
+};
+export declare function SideChatId(value: string): SideChatId;
 export interface SideChatModelSelection {
     readonly provider: string;
     readonly model: string;
@@ -22,7 +26,7 @@ export interface SideChatWireError {
     readonly message: string;
     readonly recoverable: boolean;
 }
-export type SideChatOperation = 'create' | 'open' | 'prompt' | 'close';
+export type SideChatOperation = 'create' | 'prompt' | 'close';
 export interface SideChatClientError extends SideChatWireError {
     readonly operation: SideChatOperation;
 }
@@ -53,55 +57,84 @@ export interface ConversationSelection {
     readonly atSeq: number;
     readonly rect: SelectionRect;
 }
-export type SideChatPhase = 'closed' | 'draft' | 'creating' | 'opening' | 'ready' | 'running' | 'needs-input' | 'needs-approval' | 'closing' | 'error';
+export interface SideChatMessage {
+    readonly id: string;
+    readonly role: 'user' | 'assistant';
+    readonly text: string;
+    readonly reasoning?: string | undefined;
+    readonly selectedText?: string | undefined;
+    readonly status: 'streaming' | 'complete' | 'stopped' | 'error';
+}
+export type SideChatPhase = 'closed' | 'draft' | 'creating' | 'ready' | 'running' | 'closing' | 'error';
 export interface SideChatState {
     readonly phase: SideChatPhase;
     readonly modelSelection?: SideChatModelSelection | undefined;
     readonly parentSessionId?: SessionId | undefined;
-    readonly childSessionId?: SessionId | undefined;
+    readonly chatId?: SideChatId | undefined;
     readonly boundarySeq?: number | undefined;
-    readonly inheritedThroughSeq?: number | undefined;
     readonly selection?: ConversationSelection | undefined;
     readonly draft: string;
-    readonly firstQuestion?: string | undefined;
+    readonly messages: readonly SideChatMessage[];
     readonly error?: SideChatClientError | undefined;
 }
 export interface CreateSideChatRequest {
     readonly parentSessionId: SessionId;
     readonly atSeq: number;
+    readonly selectedText?: string | undefined;
     readonly modelSelection?: SideChatModelSelection | undefined;
 }
 export interface CreateSideChatValue {
     readonly parentSessionId: SessionId;
-    readonly childSessionId: SessionId;
+    readonly chatId: SideChatId;
     readonly boundarySeq: number;
-    readonly inheritedThroughSeq: number;
-    readonly modelSelection?: SideChatModelSelection | undefined;
+    readonly modelSelection: SideChatModelSelection;
 }
-export interface SelectSideChatModelRequest extends SideChatModelSelection {
-    readonly childSessionId: SessionId;
+export interface ChatRequest {
+    readonly chatId: SideChatId;
+}
+export interface SelectSideChatModelRequest extends ChatRequest, SideChatModelSelection {
 }
 export interface SelectSideChatModelValue {
     readonly selected: SideChatModelSelection;
 }
-export interface CloseSideChatRequest {
-    readonly childSessionId: SessionId;
+export interface SendSideChatRequest extends ChatRequest {
+    /** Stable across a retry when transport failed before admission was observed. */
+    readonly requestId: string;
+    readonly text: string;
 }
 export interface CloseSideChatValue {
     readonly closed: true;
 }
+export type SideChatStreamEvent = {
+    readonly type: 'started';
+    readonly requestId: string;
+    readonly modelSelection: SideChatModelSelection;
+} | {
+    readonly type: 'content';
+    readonly text: string;
+    readonly reasoning: string;
+} | {
+    readonly type: 'finished';
+    readonly status: 'complete' | 'stopped';
+} | {
+    readonly type: 'error';
+    readonly error: SideChatWireError;
+};
+export interface SideChatStream extends AsyncIterable<SideChatStreamEvent> {
+    dispose(): void;
+}
 export interface SideChatRemote {
     create(request: CreateSideChatRequest): Promise<SideChatResult<CreateSideChatValue>>;
     selectModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>>;
-    close(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>>;
+    stream(request: SendSideChatRequest): SideChatStream;
+    cancel(request: ChatRequest): Promise<SideChatResult<{
+        readonly cancelled: true;
+    }>>;
+    close(request: ChatRequest): Promise<SideChatResult<CloseSideChatValue>>;
 }
+/** Text representation also used by the durable main-composer annotation codec. */
 export type SideChatPromptPart = {
     readonly type: 'text';
     readonly text: string;
-} | {
-    readonly type: 'image';
-    readonly mediaType: string;
-    readonly data: string;
-    readonly name?: string;
 };
 export {};

@@ -8,10 +8,10 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 ## Install
 
-Install DSH 0.1.2-rc.1 if it is not already available. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
+Install DSH 0.2.0-rc.1 if it is not already available. This release is on npm's `next` tag, not `latest`. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.1.2-rc.1
+npm install --global @deepseek-ai/dsh@0.2.0-rc.1
 pnpm cache delete "@ahggg/dsh-side-chat"
 dsh plugin --profile web add @ahggg/dsh-side-chat@latest
 ```
@@ -43,7 +43,7 @@ On phones and tablets, long-press text in a completed message to select it. The 
 3. Click `Add to chat` to add an optional comment before attaching the passage to the main composer, `More details` to send an explanation request immediately, or `Ask in side chat` to write a focused question.
 4. When writing your own message or question, press `Enter` to send it.
 5. After a Side Chat reply settles, click `Add to conversation` to attach that focused discussion to the main composer as one conversation reference.
-6. Press `Esc` or click `×` when you are done.
+6. Click `×`, or press `Esc` while focused inside the Side Chat panel, when you are done. Escape in another composer or menu does not close Side Chat.
 
 Useful details:
 
@@ -53,27 +53,30 @@ Useful details:
 - `Add to chat` keeps any existing draft text and can collect multiple numbered passages, each with its own optional comment, in one annotation capsule.
 - `Add to conversation` captures the Side Chat's user/assistant history, preserves the main draft, and refreshes the existing reference instead of duplicating it when clicked again.
 - The input grows with its content and becomes scrollable at its maximum height.
-- While a reply is running, the send icon becomes a stop button.
+- While a reply is running, use Stop to interrupt it; send a follow-up after it finishes or stops. Text entered while a send is pending stays in the composer.
 - Assistant replies use DSH's native Markdown rendering.
 - Hover over `N annotations` to preview every selected passage and its comment.
 - Before sending, hover over the annotation capsule and click `×` to remove it; after sending, the same capsule appears above the user message.
-- The main conversation stays visible and is never switched to the child Session.
+- Your first Side Chat message displays the selected passage as one annotation and your question as plain text, not internal XML.
+- The main conversation stays visible. No child Session is created.
 
 ## What happens to the conversation
 
-The first send creates a real DSH Session fork at the selected message. The child inherits the complete event prefix, presets, and workspace. Its initial model choice uses the last accepted Side Chat choice when one is saved, otherwise it snapshots the parent configuration; later model or reasoning-effort changes apply to subsequent child steps without changing or following the parent conversation. Keeping the prefix unchanged is friendly to provider prompt caching, although a cache hit is never guaranteed.
+`Ask in side chat` and `More details` use direct, streaming model calls through DSH's configured provider. On the first send, the plugin captures a **read-only text snapshot** of the parent conversation through the selected message's completed turn. Later parent prompts are excluded, and this context stays fixed for follow-ups. Opening the draft alone makes no model call.
 
-Closing Side Chat stops active work, archives the child Session, and releases its Agent. It does not delete the child's history from disk. The child and copied prefix therefore consume normal DSH Session storage.
+Side Chat keeps its own temporary message history in memory. It does **not** fork, copy, create, or archive a DSH Session, run an Agent, or write a Session event log. It has **no tools, command execution, or file-editing capability**. Parent reasoning and image/file attachment bytes are omitted; historical tool text is only reference material. The initial model uses the saved Side Chat choice, or the selected parent turn's configuration. Changing it affects only subsequent Side Chat replies.
 
-The parent and child share the same workspace. File changes, commands, and other tool side effects made in Side Chat are real and are not reverted when the panel closes.
+Closing the panel, reloading/disconnecting the client, or unloading the plugin cancels active work and discards the temporary discussion. Host records also expire after 30 minutes idle. To keep a discussion, use **Add to conversation**, then **send the parent draft** to store the reference in the parent history. Adding a reference alone does not send it. References already added to the parent draft are separate from the temporary panel and survive its closure.
+
+The text snapshot and Side Chat history are sent to the model on each request, so normal provider token usage still applies; avoiding Session copies does not eliminate context tokens or guarantee cache reuse. Archived Sessions created by older plugin versions are not automatically deleted.
 
 ## Current limitations
 
 - A selection must stay inside one completed message.
-- Attachments and `/side` are not supported yet.
-- Closed Side Chats cannot be reopened from the panel.
-- There is no automatic history cleanup or “keep as normal chat” action.
-- An archived child may briefly appear in normal Session lists.
+- This is a text-only, read-only discussion, not a second Agent. Attachments, tools, Steer, and `/side` are not supported.
+- Closed or expired discussions cannot be reopened. There is no “keep as normal Session” action.
+- Context is limited to 2,097,152 characters and rejected rather than silently truncated. Each question is limited to 65,536 characters; each reply (including reasoning) to 262,144 characters. A discussion permits at most 64 questions and 2,097,152 question/reply/reasoning characters. Output limits produce an explicit error and keep only the displayed partial reply.
+- Model requests time out after two minutes. Provider-specific context/output limits may be lower.
 
 ## Upgrade or remove
 
