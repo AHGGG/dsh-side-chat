@@ -10,7 +10,7 @@ Ask a focused follow-up about selected text without leaving your current convers
 
 Use these exact versions together:
 
-- **Side Chat:** `@ahggg/dsh-side-chat@1.0.0`
+- **Side Chat:** `@ahggg/dsh-side-chat@1.0.1`
 - **DeepSeek Harness runtime:** `0.2.0-rc.1`
 
 ### DeepSeek Harness Desktop
@@ -18,7 +18,7 @@ Use these exact versions together:
 Side Chat supports the Desktop app. In its plugin installation dialog, enter the complete package spec:
 
 ```text
-@ahggg/dsh-side-chat@1.0.0
+@ahggg/dsh-side-chat@1.0.1
 ```
 
 Install it, then restart DeepSeek Harness Desktop. Use the Desktop app's plugin manager for Desktop installations; the CLI commands below target the Web profile.
@@ -29,7 +29,7 @@ Install the matching DSH CLI if needed, then install the pinned plugin version:
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.2.0-rc.1
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.1 --save-exact
 ```
 
 Start DSH from the project you want the agent to work in:
@@ -101,7 +101,7 @@ The text snapshot and Side Chat history are sent to the model on each request, s
 In the Desktop app's plugin manager, update or reinstall using this exact package spec, then restart the app:
 
 ```text
-@ahggg/dsh-side-chat@1.0.0
+@ahggg/dsh-side-chat@1.0.1
 ```
 
 If Desktop still reports `@ahggg/dsh-side-chat@0.7.3`, it is loading the old plugin, which does not support DSH `0.2.0-rc.1`. A working `dsh web` installation does not mean Desktop has been updated. Update the Desktop installation rather than bypassing DSH's compatibility check.
@@ -110,10 +110,10 @@ To uninstall, remove Side Chat through the Desktop app's plugin manager.
 
 ### Web
 
-To upgrade an existing Web installation to `1.0.0`, re-add the exact version. `add --save-exact` replaces the installed package version and keeps the dependency pinned:
+To upgrade an existing Web installation to `1.0.1`, re-add the exact version. `add --save-exact` replaces the installed package version and keeps the dependency pinned:
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.1 --save-exact
 ```
 
 Restart `dsh web` and reload the browser after updating. Remove the Web-profile plugin with:
