@@ -1,319 +1,116 @@
 import { describe, expect, it } from 'vitest'
-import {
-  addSelectionToConversation,
-  conversationAnnotationRecoveryRecord,
-  conversationAnnotations,
-  removeConversationAnnotations,
-  selectionReferenceSource,
-  type ParentComposerInput,
-  type ParentComposerOccurrence,
-} from '../../src/client/parent-composer/add-to-conversation.js'
+import { addSelectionToConversation, conversationAnnotations, removeConversationAnnotations } from '../../src/client/parent-composer/add-to-conversation.js'
 import { ConversationAnnotationPersistence } from '../../src/client/parent-composer/annotation-persistence.js'
-import type { ConversationSelection } from '../../src/shared/contracts.js'
-import { SessionId } from '../../src/shared/contracts.js'
-import {
-  composerReferenceFixture,
-  lexicalComposerReferenceFixture,
-} from './composer-reference-fixture.js'
+import { addReferencedSideChatToConversation } from '../../src/client/parent-composer/referenced-conversation.js'
+import { SessionId, type ConversationSelection } from '../../src/shared/contracts.js'
+import { lexicalComposerReferenceFixture } from './composer-reference-fixture.js'
 
 const selection: ConversationSelection = {
-  parentSessionId: SessionId('parent-1'),
-  fragments: [{
-    nodeKey: 'node-1',
-    nodeKind: 'assistant-step',
-    turnKey: 'turn:1',
-    seq: 7,
-    startOffset: 0,
-    endOffset: 13,
-    text: 'Selected text',
-    source: 'assistant',
-    modelVisible: true,
-    settled: true,
-  }],
-  text: 'Selected text',
-  atSeq: 7,
+  parentSessionId: SessionId('parent-1'), fragments: [], text: 'Selected text', atSeq: 7,
   rect: { x: 20, y: 20, width: 80, height: 20, viewportWidth: 800, viewportHeight: 600 },
 }
-
+const parent = SessionId('parent-1')
 class MemoryStorage {
-  private readonly values = new Map<string, string>()
-
-  get size(): number { return this.values.size }
-  get records(): readonly string[] { return [...this.values.values()] }
+  readonly values = new Map<string, string>()
   getItem(key: string): string | null { return this.values.get(key) ?? null }
   setItem(key: string, value: string): void { this.values.set(key, value) }
   removeItem(key: string): void { this.values.delete(key) }
 }
-
-function composerFixture(
-  draft = '',
-  initialOccurrences: readonly ParentComposerOccurrence[] = [],
-) {
-  let snapshot: ReturnType<ParentComposerInput['state']['getSnapshot']> = {
-    draft,
-    draftRev: 0,
-    occurrences: initialOccurrences,
-  }
-  const input: ParentComposerInput = {
-    state: { getSnapshot: () => snapshot },
-    insertReference: (reference, span) => {
-      if (span.draftRev !== snapshot.draftRev) return false
-      snapshot = {
-        draft: `\uFFFC${snapshot.draft}`,
-        draftRev: snapshot.draftRev + 1,
-        occurrences: [{
-          occurrenceId: 1,
-          source: reference.source,
-          ref: reference.ref,
-          offset: 0,
-        }],
-      }
-      return true
-    },
-    setDraft: (nextDraft) => {
-      snapshot = {
-        draft: nextDraft,
-        draftRev: snapshot.draftRev + 1,
-        occurrences: nextDraft.includes('\uFFFC') ? snapshot.occurrences : [],
-      }
-    },
-  }
-  return { input, snapshot: () => snapshot }
+function populatedDraft() {
+  const fixture = lexicalComposerReferenceFixture('Question')
+  fixture.input.insertReference({ source: 'files', ref: 'README.md', label: 'README.md',
+    clipboardText: '@README.md', appearance: 'file' }, { start: 0, end: 0, draftRev: 0 })
+  addSelectionToConversation(fixture.input, selection, 'Note')
+  addReferencedSideChatToConversation(fixture.input, {
+    version: 1, conversationId: SessionId('child-1'), title: 'Side Chat',
+    conversation: [{ role: 'assistant', content: 'Useful conclusion' }],
+  })
+  return fixture
 }
 
-describe('parent annotation refresh persistence', () => {
-  it('rehydrates the exact reference after rc.6 restores only its raw draft', async () => {
+describe('DSH 0.2 reference draft recovery', () => {
+  it('restores annotations, conversation snapshots and file chips without changing the draft', () => {
+    const original = populatedDraft()
     const storage = new MemoryStorage()
-    const beforeReload = composerFixture('Question')
-    expect(addSelectionToConversation(beforeReload.input, selection, 'Initial note')).toBe(true)
-    const rawDraft = beforeReload.snapshot().draft
-
-    const firstLifetime = new ConversationAnnotationPersistence(storage)
-    firstLifetime.reconcile(SessionId('parent-1'), beforeReload.input)
-    expect(storage.size).toBe(1)
-
-    const afterReload = composerFixture()
-    const secondLifetime = new ConversationAnnotationPersistence(storage)
-    // ConversationSession seeds the persisted draft after its first empty render.
-    secondLifetime.reconcile(SessionId('parent-1'), afterReload.input)
-    expect(storage.size).toBe(1)
-    afterReload.input.setDraft(rawDraft)
-    secondLifetime.reconcile(SessionId('parent-1'), afterReload.input)
-
-    expect(afterReload.snapshot().draft).toBe(rawDraft)
-    expect(conversationAnnotations(afterReload.snapshot())).toEqual([
-      { text: 'Selected text', comment: 'Initial note' },
-    ])
-    const occurrence = afterReload.snapshot().occurrences[0]
-    expect(occurrence).toBeDefined()
-    const serialized = await selectionReferenceSource.codec.serialize(
-      occurrence?.ref ?? '',
-      new AbortController().signal,
-    )
-    expect(serialized).toContain('Selected text')
-    expect(serialized).not.toContain('\uFFFC')
-
-    expect(removeConversationAnnotations(afterReload.input)).toBe(true)
-    secondLifetime.reconcile(SessionId('parent-1'), afterReload.input)
-    expect(storage.size).toBe(0)
-    expect(afterReload.snapshot().draft).toBe('Question')
-  })
-
-  it('rehydrates the exact current DSH clipboard projection after refresh', () => {
-    const storage = new MemoryStorage()
-    const beforeReload = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(beforeReload.input, selection, 'Current note')).toBe(true)
-    const firstLifetime = new ConversationAnnotationPersistence(storage)
-    firstLifetime.reconcile(SessionId('parent-current-refresh'), beforeReload.input)
-
-    const record = JSON.parse(storage.records[0] ?? '{}') as {
-      version?: number
-      mirrorDraft?: string
-      baseDraft?: string
-    }
-    expect(record).toMatchObject({
-      version: 2,
-      mirrorDraft: 'Selected text\n\nQuestion',
-      baseDraft: 'Question',
-    })
-
-    const afterReload = composerReferenceFixture()
-    const secondLifetime = new ConversationAnnotationPersistence(storage)
-    secondLifetime.reconcile(SessionId('parent-current-refresh'), afterReload.input)
-    afterReload.input.setDraft(record.mirrorDraft ?? '')
-    secondLifetime.reconcile(SessionId('parent-current-refresh'), afterReload.input)
-
-    expect(afterReload.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\nQuestion')
-    expect(conversationAnnotations(afterReload.snapshot())).toEqual([{
-      text: 'Selected text',
-      comment: 'Current note',
-    }])
-    expect(storage.size).toBe(1)
-  })
-
-  it('rehydrates a DSH 0.1.2 Lexical reference from its clipboard projection', () => {
-    const storage = new MemoryStorage()
-    const beforeReload = lexicalComposerReferenceFixture('Question')
-    expect(addSelectionToConversation(beforeReload.input, selection, 'Lexical note')).toBe(true)
-    new ConversationAnnotationPersistence(storage)
-      .reconcile(SessionId('parent-lexical-refresh'), beforeReload.input)
-
-    const record = JSON.parse(storage.records[0] ?? '{}') as {
-      displayDraft?: string
-      mirrorDraft?: string
-      baseDraft?: string
-    }
-    expect(record).toMatchObject({
-      displayDraft: 'Selected text Question',
-      mirrorDraft: 'Selected text Question',
-      baseDraft: 'Question',
-    })
-
-    const afterReload = lexicalComposerReferenceFixture()
+    new ConversationAnnotationPersistence(storage).reconcile(parent, original.input)
+    const restored = lexicalComposerReferenceFixture()
     const persistence = new ConversationAnnotationPersistence(storage)
-    persistence.reconcile(SessionId('parent-lexical-refresh'), afterReload.input)
-    afterReload.input.setDraft(record.mirrorDraft ?? '')
-    persistence.reconcile(SessionId('parent-lexical-refresh'), afterReload.input)
-
-    expect(afterReload.snapshot().draft).toBe('Selected text Question')
-    expect(afterReload.snapshot().occurrences).toHaveLength(1)
-    expect(conversationAnnotations(afterReload.snapshot())).toEqual([{
-      text: 'Selected text',
-      comment: 'Lexical note',
-    }])
-    expect(removeConversationAnnotations(afterReload.input)).toBe(true)
-    expect(afterReload.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+    persistence.reconcile(parent, restored.input)
+    expect(storage.values.size).toBe(1)
+    restored.input.setDraft(original.snapshot().draft)
+    persistence.reconcile(parent, restored.input)
+    expect(restored.snapshot().draft).toBe(original.snapshot().draft)
+    expect(restored.snapshot().occurrences.map(({ occurrenceId: _id, ...item }) => item))
+      .toEqual(original.snapshot().occurrences.map(({ occurrenceId: _id, ...item }) => item))
+    expect(conversationAnnotations(restored.snapshot())).toEqual([{ text: 'Selected text', comment: 'Note' }])
   })
 
-  it('migrates the v0.7.1 projection record after an upgrade', () => {
-    const original = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(original.input, selection, 'Legacy stored note')).toBe(true)
-    const snapshot = original.snapshot()
-    const ref = snapshot.occurrences[0]?.ref ?? ''
-    const storage = new MemoryStorage()
-    storage.setItem('dsh-side-chat:composer-annotations:v0.7.1-upgrade', JSON.stringify({
-      version: 1,
-      draft: snapshot.draft,
-      projection: 'Selected text\n\nQuestion',
-      ref,
-    }))
-
-    const restored = composerReferenceFixture('Selected text\n\nQuestion')
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('v0.7.1-upgrade'), restored.input)
-
-    expect(restored.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\nQuestion')
-    expect(conversationAnnotations(restored.snapshot())).toEqual([{
-      text: 'Selected text',
-      comment: 'Legacy stored note',
-    }])
-    expect(storage.size).toBe(1)
-  })
-
-  it('uses every occurrence clipboard projection in the exact recovery mirror', () => {
-    const fileOccurrence: ParentComposerOccurrence = {
-      occurrenceId: 41,
-      source: 'dsh-file-reference',
-      ref: 'file-ref',
-      offset: 0,
-      length: '@file'.length,
-      label: 'file',
-      clipboardText: '@/full/path',
-    }
-    const original = composerReferenceFixture('@file Question', 'current', [fileOccurrence])
-    expect(addSelectionToConversation(original.input, selection)).toBe(true)
-
-    const record = conversationAnnotationRecoveryRecord(original.snapshot())
-    expect(record).toMatchObject({
-      mirrorDraft: 'Selected text\n\n@/full/path Question',
-      baseDraft: '@/full/path Question',
-    })
-
-    const storage = new MemoryStorage()
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('multiple-references'), original.input)
-    const restored = composerReferenceFixture(record?.mirrorDraft ?? '')
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('multiple-references'), restored.input)
-
-    expect(restored.snapshot().draft).toBe('@__dsh_side_chat_annotations__\n\n@/full/path Question')
-    expect(conversationAnnotations(restored.snapshot())).toEqual([{ text: 'Selected text' }])
-  })
-
-  it('does not guess that similar ordinary text is a stored annotation', () => {
-    const storage = new MemoryStorage()
-    const original = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(original.input, selection)).toBe(true)
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('strict-match'), original.input)
-
-    const changed = composerReferenceFixture('Selected text\n\nQuestion edited')
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('strict-match'), changed.input)
-
-    expect(changed.snapshot()).toMatchObject({
-      draft: 'Selected text\n\nQuestion edited',
-      occurrences: [],
-    })
-    expect(storage.size).toBe(0)
-  })
-
-  it('keeps the exact mirror draft and recovery record when reinsertion is temporarily refused', () => {
-    const storage = new MemoryStorage()
-    const original = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(original.input, selection)).toBe(true)
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('retry-refusal'), original.input)
-    const record = JSON.parse(storage.records[0] ?? '{}') as { mirrorDraft?: string }
-    const refused = composerReferenceFixture(record.mirrorDraft ?? '')
-    const input: ParentComposerInput = {
-      state: refused.input.state,
-      setDraft: refused.input.setDraft,
-      insertReference: () => false,
-    }
-
-    const persistence = new ConversationAnnotationPersistence(storage)
-    persistence.reconcile(SessionId('retry-refusal'), input)
-    expect(refused.snapshot()).toMatchObject({ draft: record.mirrorDraft, occurrences: [] })
-    expect(storage.size).toBe(1)
-  })
-
-  it('keeps a display draft retryable when reinsertion is temporarily refused', () => {
-    const storage = new MemoryStorage()
-    const original = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(original.input, selection)).toBe(true)
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('display-retry-refusal'), original.input)
-    const record = JSON.parse(storage.records[0] ?? '{}') as {
-      displayDraft?: string
-      mirrorDraft?: string
-    }
-    const refused = composerReferenceFixture(record.displayDraft ?? '')
-    const input: ParentComposerInput = {
-      state: refused.input.state,
-      setDraft: refused.input.setDraft,
-      insertReference: () => false,
-    }
-
-    new ConversationAnnotationPersistence(storage).reconcile(SessionId('display-retry-refusal'), input)
-
-    expect(refused.snapshot()).toMatchObject({ draft: record.mirrorDraft, occurrences: [] })
-    expect(storage.size).toBe(1)
-  })
-
-  it('removes an unmatched orphan prefix instead of allowing U+FFFC to send', () => {
-    const orphan = composerFixture('\uFFFC\n\nQuestion')
-    const persistence = new ConversationAnnotationPersistence(undefined)
-
-    persistence.reconcile(SessionId('parent-1'), orphan.input)
-
-    expect(orphan.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
-    expect(orphan.snapshot().draft).not.toContain('\uFFFC')
-  })
-
-  it('recognizes the current @label occurrence and cleans an orphaned display prefix', () => {
-    const active = composerReferenceFixture('Question')
-    expect(addSelectionToConversation(active.input, selection, 'Current note')).toBe(true)
+  it('does not resurrect a reference deliberately replaced by its own clipboard text', () => {
+    const fixture = lexicalComposerReferenceFixture('Question')
+    addSelectionToConversation(fixture.input, selection)
     const storage = new MemoryStorage()
     const persistence = new ConversationAnnotationPersistence(storage)
-    persistence.reconcile(SessionId('parent-current'), active.input)
-    expect(storage.size).toBe(1)
+    persistence.reconcile(parent, fixture.input)
+    fixture.input.replaceText(selection.text, { start: 0, end: 1, draftRev: fixture.snapshot().draftRev })
+    const before = fixture.snapshot()
+    persistence.reconcile(parent, fixture.input)
+    expect(fixture.snapshot()).toBe(before)
+    expect(fixture.snapshot().occurrences).toHaveLength(0)
+    expect(storage.values.size).toBe(0)
+  })
 
-    const orphan = composerReferenceFixture('@__dsh_side_chat_annotations__\n\nQuestion')
-    new ConversationAnnotationPersistence(undefined).reconcile(SessionId('orphan-current'), orphan.input)
-    expect(orphan.snapshot()).toMatchObject({ draft: 'Question', occurrences: [] })
+  it('does not treat a new editor generation as a deliberate send/removal', () => {
+    const storage = new MemoryStorage()
+    const persistence = new ConversationAnnotationPersistence(storage)
+    const first = populatedDraft()
+    persistence.reconcile(parent, first.input)
+    const next = lexicalComposerReferenceFixture()
+    persistence.reconcile(parent, next.input)
+    next.input.setDraft(first.snapshot().draft)
+    persistence.reconcile(parent, next.input)
+    expect(next.snapshot().occurrences).toHaveLength(3)
+  })
+
+  it('leaves a changed draft alone and clears records after removing the final plugin chip', () => {
+    const storage = new MemoryStorage()
+    const original = lexicalComposerReferenceFixture('Question')
+    addSelectionToConversation(original.input, selection)
+    const persistence = new ConversationAnnotationPersistence(storage)
+    persistence.reconcile(parent, original.input)
+    const changed = lexicalComposerReferenceFixture(`${original.snapshot().draft} edited`)
+    persistence.reconcile(parent, changed.input)
+    expect(changed.snapshot().occurrences).toHaveLength(0)
+    expect(storage.values.size).toBe(0)
+    persistence.reconcile(parent, original.input)
+    removeConversationAnnotations(original.input)
+    persistence.reconcile(parent, original.input)
+    expect(storage.values.size).toBe(0)
+  })
+
+  it('rolls back a partial refused restoration and retries the entire record', () => {
+    const storage = new MemoryStorage()
+    const original = populatedDraft()
+    new ConversationAnnotationPersistence(storage).reconcile(parent, original.input)
+    const fixture = lexicalComposerReferenceFixture(original.snapshot().draft)
+    let calls = 0
+    let refuse = true
+    const input = { ...fixture.input, insertReference: (...args: Parameters<typeof fixture.input.insertReference>) => {
+      calls += 1
+      return refuse && calls === 2 ? false : fixture.input.insertReference(...args)
+    } }
+    const persistence = new ConversationAnnotationPersistence(storage)
+    persistence.reconcile(parent, input)
+    expect(fixture.snapshot()).toMatchObject({ draft: original.snapshot().draft, occurrences: [] })
+    expect(storage.values.size).toBe(1)
+    refuse = false
+    persistence.reconcile(parent, input)
+    expect(fixture.snapshot().occurrences).toHaveLength(3)
+  })
+
+  it('ignores corrupt storage and never deletes a draft because storage is denied', () => {
+    const input = lexicalComposerReferenceFixture('Keep my text')
+    const storage = { getItem: () => { throw new Error('denied') }, setItem: () => {}, removeItem: () => {} }
+    new ConversationAnnotationPersistence(storage).reconcile(parent, input.input)
+    expect(input.snapshot().draft).toBe('Keep my text')
   })
 })

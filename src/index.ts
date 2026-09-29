@@ -1,51 +1,54 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type {} from '@deepseek-ai/dsh-agent-presets'
-import type {} from '@deepseek-ai/dsh-workspace'
-import { ArchivedForkSideChatService } from './host/archived-fork-service.js'
+import { TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
+import { ReadOnlySideChatService } from './host/read-only-chat-service.js'
 import type {
-  CloseSideChatRequest,
-  CloseSideChatValue,
-  CreateSideChatRequest,
-  CreateSideChatValue,
-  SelectSideChatModelRequest,
-  SelectSideChatModelValue,
-  SideChatResult,
+  ChatRequest, CreateSideChatRequest, CreateSideChatValue, SelectSideChatModelRequest,
+  SelectSideChatModelValue, SendSideChatRequest, SideChatResult, SideChatStreamEvent,
 } from './shared/contracts.js'
 
 export * from './host/index.js'
 export * from './shared/constants.js'
 export * from './shared/contracts.js'
 export * from './shared/error-codes.js'
+declare module '@deepseek-ai/cordis' { interface Context { sideChat: DshSideChatPlugin } }
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    sideChat: DshSideChatPlugin
-  }
-}
-
-/** Stock DSH rc.6 Host plugin. */
+/** Read-only model calls; no Agent, Session, or workspace lifecycle is created. */
 export class DshSideChatPlugin extends TypertRemoteService {
-  static inject = ['agents', 'llm', 'sessionPersistence', 'workspaceRegistry']
-  readonly archived: ArchivedForkSideChatService
-
+  static inject = ['llm', 'sessions', 'sessionQuery']
+  readonly conversations: ReadOnlySideChatService
+  private readonly owners = new Set<string>()
   constructor(ctx: Context) {
-    super(ctx, 'sideChat', { namespace: 'sideChatArchived' })
-    this.archived = new ArchivedForkSideChatService(ctx)
-    ctx.effect(() => async () => { await this.archived.dispose() }, 'dsh-side-chat.lifecycle')
+    super(ctx, 'sideChat')
+    this.conversations = new ReadOnlySideChatService(ctx)
+    ctx.effect(() => async () => { await this.conversations.dispose() }, 'dsh-side-chat.lifecycle')
   }
-
-  createArchived(request: CreateSideChatRequest): Promise<SideChatResult<CreateSideChatValue>> {
-    return this.archived.create(request)
+  create(request: CreateSideChatRequest, signal: AbortSignal): Promise<SideChatResult<CreateSideChatValue>> {
+    return this.conversations.create(request, this.owner(), signal)
   }
-
-  selectArchivedModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>> {
-    return this.archived.selectModel(request)
+  selectModel(request: SelectSideChatModelRequest, signal: AbortSignal): Promise<SideChatResult<SelectSideChatModelValue>> {
+    return this.conversations.selectModel(request, this.owner(), signal)
   }
-
-  closeArchived(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>> {
-    return this.archived.close(request)
+  stream(request: SendSideChatRequest, signal: AbortSignal): RemoteStream<SideChatStreamEvent> {
+    return this.conversations.stream(request, this.owner(), signal)
+  }
+  cancel(request: ChatRequest): Promise<SideChatResult<{ cancelled: true }>> {
+    return this.conversations.cancel(request, this.owner())
+  }
+  close(request: ChatRequest): Promise<SideChatResult<{ closed: true }>> {
+    return this.conversations.close(request, this.owner())
+  }
+  private owner(): string {
+    const peer = this.ctx.invocation?.peer
+    if (peer === undefined) return 'local'
+    const id = String(peer.id)
+    if (!this.owners.has(id)) {
+      this.owners.add(id)
+      peer.ctx.effect(() => () => {
+        this.owners.delete(id)
+        this.conversations.closeOwner(id)
+      }, 'dsh-side-chat.peer')
+    }
+    return id
   }
 }
-
 export default DshSideChatPlugin

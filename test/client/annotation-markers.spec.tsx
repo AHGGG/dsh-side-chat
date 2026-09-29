@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render as renderReact, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConversationAnnotationMarkers } from '../../src/client/selection/ConversationAnnotationMarkers.js'
 import type { ConversationSelectionAnnotation } from '../../src/client/parent-composer/add-to-conversation.js'
 import { SessionId } from '../../src/shared/contracts.js'
+
+const render = (ui: Parameters<typeof renderReact>[0]) => renderReact(ui, {
+  wrapper: ({ children }) => <div data-conversation-session="parent-1">{children}</div>,
+})
 
 const annotation: ConversationSelectionAnnotation = {
   annotationIndex: 0,

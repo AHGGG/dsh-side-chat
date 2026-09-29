@@ -1,10 +1,5 @@
-import type {
-  AssistantBlock,
-  ConversationNode,
-} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { SessionId } from '../../shared/contracts.js'
+import type { SideChatId, SideChatMessage } from '../../shared/contracts.js'
 import {
-  draftWithoutOccurrence,
   newlyInsertedOccurrence,
   occurrenceEditSpan,
 } from './composer-reference.js'
@@ -28,7 +23,7 @@ export interface ReferencedConversationMessage {
 /** One immutable snapshot carried by the parent composer's conversation label. */
 export interface ReferencedSideChatConversation {
   readonly version: 1
-  readonly conversationId: SessionId
+  readonly conversationId: string
   readonly title: string
   readonly conversation: readonly ReferencedConversationMessage[]
 }
@@ -43,49 +38,19 @@ function normalizedTitle(title: string): string {
   return normalized.length === 0 ? 'Side Chat' : normalized
 }
 
-function visibleContentText(content: readonly unknown[]): string {
-  return content.map((block) => {
-    if (typeof block !== 'object' || block === null) return ''
-    const value = block as { readonly type?: unknown; readonly text?: unknown }
-    if (value.type === 'text' && typeof value.text === 'string') return value.text
-    if (value.type === 'image') return '[Image attachment]'
-    return ''
-  }).filter(Boolean).join('\n').trim()
-}
-
-function assistantText(node: Extract<ConversationNode, { kind: 'assistant' }>): string {
-  return node.blocks
-    .flatMap((block: AssistantBlock) => block.kind === 'text' ? [block.text] : [])
-    .join('\n')
-    .trim()
-}
-
-/** Project exactly the user/assistant history visible in the Side Chat modal. */
+/** Capture only the plugin transcript, not the parent context or model reasoning. */
 export function referencedSideChatConversation(input: {
-  readonly conversationId: SessionId
+  readonly conversationId: SideChatId
   readonly title: string
-  readonly nodes: readonly ConversationNode[]
-  readonly inheritedThroughSeq: number
+  readonly messages: readonly SideChatMessage[]
 }): ReferencedSideChatConversation {
-  const conversation: ReferencedConversationMessage[] = []
-  for (const node of input.nodes) {
-    if (node.seq <= input.inheritedThroughSeq) continue
-    if (node.kind === 'user' || node.kind === 'steering') {
-      const content = visibleContentText(node.content)
-      if (content.length > 0) conversation.push({ role: 'user', content })
-      continue
-    }
-    if (node.kind === 'assistant') {
-      const content = assistantText(node)
-      if (content.length > 0) conversation.push({ role: 'assistant', content })
-    }
-  }
-  return {
-    version: 1,
-    conversationId: input.conversationId,
-    title: normalizedTitle(input.title),
-    conversation,
-  }
+  const conversation = input.messages.flatMap((message): ReferencedConversationMessage[] => {
+    if (message.status === 'streaming' || message.text.trim().length === 0) return []
+    const content = message.selectedText === undefined ? message.text
+      : `Selected passage:\n${message.selectedText}\n\nQuestion:\n${message.text}`
+    return [{ role: message.role, content }]
+  })
+  return { version: 1, conversationId: input.conversationId, title: normalizedTitle(input.title), conversation }
 }
 
 function isReferencedConversationMessage(value: unknown): value is ReferencedConversationMessage {
@@ -114,7 +79,7 @@ function decodeReferencedConversation(ref: string): ReferencedSideChatConversati
   }
   return {
     version: 1,
-    conversationId: reference.conversationId as SessionId,
+    conversationId: reference.conversationId,
     title: reference.title,
     conversation: reference.conversation,
   }
@@ -191,21 +156,8 @@ function removeOccurrence(input: ParentComposerInput, occurrenceId: number): voi
   const snapshot = input.state.getSnapshot()
   const occurrence = snapshot.occurrences.find(candidate => candidate.occurrenceId === occurrenceId)
   if (occurrence === undefined) return
-  let title: string
-  try {
-    title = decodeReferencedConversation(occurrence.ref).title
-  } catch {
-    return
-  }
-  if (input.referenceMode === 'lexical' && input.replaceText !== undefined) {
-    const span = occurrenceEditSpan(input, snapshot, occurrence, {
-      consumeFollowingSeparator: true,
-    })
-    if (span !== undefined) input.replaceText('', span)
-    return
-  }
-  const draft = draftWithoutOccurrence(snapshot, occurrence, title, { consumeAdjacentSpace: true })
-  if (draft !== undefined) input.setDraft(draft)
+  const span = occurrenceEditSpan(input, snapshot, occurrence)
+  if (span !== undefined) input.replaceText('', span)
 }
 
 /** Insert or refresh one Side Chat label without duplicating an older snapshot. */
@@ -219,7 +171,7 @@ export function addReferencedSideChatToConversation(
   const encoded = encodeReferencedConversation(reference)
   if (existing.some(occurrence => occurrence.ref === encoded)) return true
 
-  const target = input.referenceMode === 'lexical' ? existing[0] : undefined
+  const target = existing[0]
   const span = target === undefined
     ? { start: 0, end: 0, draftRev: before.draftRev }
     : occurrenceEditSpan(input, before, target)
@@ -233,21 +185,11 @@ export function addReferencedSideChatToConversation(
   }, span)
   if (!inserted) return false
 
-  if (input.referenceMode === 'lexical') {
-    const after = input.state.getSnapshot()
-    const occurrence = newlyInsertedOccurrence(
-      before,
-      after,
-      SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE,
-      encoded,
-    )
-    if (occurrence === undefined) return false
-    for (const duplicate of existing.slice(1)) removeOccurrence(input, duplicate.occurrenceId)
-    return matchingOccurrences(input.state.getSnapshot(), reference).length === 1
-  }
-
-  for (const occurrence of existing) removeOccurrence(input, occurrence.occurrenceId)
-  return true
+  const after = input.state.getSnapshot()
+  const occurrence = newlyInsertedOccurrence(before, after, SIDE_CHAT_CONVERSATION_REFERENCE_SOURCE, encoded)
+  if (occurrence === undefined) return false
+  for (const duplicate of existing.slice(1)) removeOccurrence(input, duplicate.occurrenceId)
+  return matchingOccurrences(input.state.getSnapshot(), reference).length === 1
 }
 
 /** Reference codec used by the native composer chip and submit pipeline. */

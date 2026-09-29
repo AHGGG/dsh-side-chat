@@ -43,8 +43,8 @@ await import(new URL('../lib/remote.js', import.meta.url))
 const typert = await import(new URL('../lib/typert.js', import.meta.url))
 for (const invocation of typert.default.invocations) {
   const schemas = [
-    ...invocation.parameters.map(parameter => parameter.codec.schema),
-    invocation.result.schema,
+    ...invocation.parameters.map(parameter => parameter.codec.create()),
+    invocation.result.create(),
   ]
   if (schemas.some(schema => schema?._zod?.version?.major !== 4)) {
     throw new Error(`${invocation.id} is not backed by Zod v4 schemas`)

@@ -43,7 +43,7 @@ export function SideChatPanel({
   const draftRef = useAutoGrowingTextarea(state.draft)
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
-    if (submitting) return
+    if (submitting || ['creating', 'running', 'closing'].includes(state.phase)) return
     setSubmitting(true)
     try {
       await onFirstSend(state.draft)
@@ -57,7 +57,14 @@ export function SideChatPanel({
       className="dsh-side-chat-panel"
       data-side-chat-panel=""
       aria-label={messages.title}
-      aria-busy={['creating', 'opening', 'closing'].includes(state.phase) || undefined}
+      aria-busy={['creating', 'closing'].includes(state.phase) || undefined}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+          event.preventDefault()
+          event.stopPropagation()
+          void onClose()
+        }
+      }}
     >
       <SideChatHeader
         phase={state.phase}
@@ -72,7 +79,7 @@ export function SideChatPanel({
         <SideChatErrorState error={state.error} messages={messages} onRetry={() => { void onRetry() }} />
       )}
 
-      {state.childSessionId !== undefined && embeddedConversation !== undefined
+      {state.messages.length > 0 && embeddedConversation !== undefined
         ? <SideChatBody>{embeddedConversation}</SideChatBody>
         : (
           <form
@@ -94,11 +101,12 @@ export function SideChatPanel({
               autoFocus
               rows={1}
               value={state.draft}
-              disabled={['creating', 'opening', 'closing'].includes(state.phase)}
+              disabled={['creating', 'running', 'closing'].includes(state.phase)}
               placeholder={messages.placeholder}
               onChange={(event) => { onDraftChange(event.target.value) }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing
+                  && event.keyCode !== 229) {
                   event.preventDefault()
                   event.currentTarget.form?.requestSubmit()
                 }
@@ -110,7 +118,7 @@ export function SideChatPanel({
                 type="submit"
                 className="dsh-side-chat-send-button"
                 aria-label={messages.send}
-                disabled={submitting || state.draft.trim().length === 0}
+                disabled={submitting || ['creating', 'running', 'closing'].includes(state.phase) || state.draft.trim().length === 0}
               >
                 <SendIcon />
               </button>
@@ -122,7 +130,7 @@ export function SideChatPanel({
         <span>{messages.temporary}</span>
         <span>{messages.referenceOnly}</span>
         <span>{messages.cannotReopen}</span>
-        <span>{messages.sharedWorkspace}</span>
+        <span>{messages.readOnly}</span>
       </footer>
       <div className="dsh-side-chat-announcer" aria-live="polite">
         {state.phase === 'running' ? 'Side Chat running' : `Side Chat ${state.phase}`}

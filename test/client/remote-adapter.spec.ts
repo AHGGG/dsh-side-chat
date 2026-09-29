@@ -1,80 +1,51 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mountArchivedRemote } from '../../src/client/rc6/remote-adapter.js'
-import type { Rc6ClientContext } from '../../src/client/rc6/context.js'
-import { SessionId } from '../../src/shared/contracts.js'
+import { mountSideChatRemote } from '../../src/client/dsh/remote-adapter.js'
+import type { DshClientContext } from '../../src/client/dsh/context.js'
+import { SessionId, SideChatId } from '../../src/shared/contracts.js'
+import { SIDE_CHAT_INVOCATIONS } from '../../src/typert.js'
+import { ManualStream, MODEL } from '../fixtures/client-runtime.js'
 
-describe('mountArchivedRemote', () => {
-  it('calls the mounted namespace through a Cordis service lookup', async () => {
-    const create = vi.fn().mockResolvedValue({
-      ok: true,
-      value: {
-        ok: true,
-        value: {
-          parentSessionId: SessionId('parent-1'),
-          childSessionId: SessionId('child-1'),
-          boundarySeq: 6,
-          inheritedThroughSeq: 5,
-        },
-      },
-    })
-    const selectModel = vi.fn().mockResolvedValue({
-      ok: true,
-      value: {
-        ok: true,
-        value: {
-          selected: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
-        },
-      },
-    })
-    const close = vi.fn().mockResolvedValue({
-      ok: true,
-      value: { ok: true, value: { childSessionId: SessionId('child-1') } },
-    })
-    const dispose = vi.fn().mockResolvedValue(undefined)
-    const mount = vi.fn().mockResolvedValue(dispose)
-    const namespace = { create, selectModel, close }
-    const remote = new Proxy({ $mount: mount }, {
-      get(target, property, receiver) {
-        if (property === 'sideChatArchived') {
-          throw new Error('cannot get property "remote.sideChatArchived" without inject')
-        }
-        return Reflect.get(target, property, receiver)
-      },
-    })
-    const get = vi.fn().mockReturnValue(namespace)
-    const ctx = { remote, get } as unknown as Rc6ClientContext
-
-    const mounted = await mountArchivedRemote(ctx)
-    expect(await mounted.remote.create({
-      parentSessionId: SessionId('parent-1'),
-      atSeq: 5.9,
-      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
-    })).toMatchObject({ ok: true, value: { childSessionId: 'child-1' } })
-    expect(create).toHaveBeenCalledWith({
-      parentSessionId: 'parent-1',
-      atSeq: 5,
-      modelSelection: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' },
-    })
-    expect(await mounted.remote.selectModel({
-      childSessionId: SessionId('child-1'),
-      provider: 'openai',
-      model: 'gpt-fast',
-      reasoningEffort: 'low',
-    })).toEqual({
-      ok: true,
-      value: { selected: { provider: 'openai', model: 'gpt-fast', reasoningEffort: 'low' } },
-    })
-    expect(selectModel).toHaveBeenCalledWith({
-      childSessionId: 'child-1',
-      provider: 'openai',
-      model: 'gpt-fast',
-      reasoningEffort: 'low',
-    })
-    expect(await mounted.remote.close({ childSessionId: SessionId('child-1') }))
-      .toEqual({ ok: true, value: { childSessionId: 'child-1' } })
-    expect(get).toHaveBeenCalledWith('remote.sideChatArchived')
-
+describe('read-only Side Chat remote', () => {
+  it('mounts the sideChat namespace, unwraps unary calls, and preserves cancellable streaming', async () => {
+    const stream = new ManualStream()
+    const rpc = {
+      create: vi.fn(async () => ({ ok: true, value: { ok: true, value: {
+        parentSessionId: SessionId('parent'), chatId: SideChatId('chat'), boundarySeq: 7, modelSelection: MODEL,
+      } } })),
+      selectModel: vi.fn(async () => ({ ok: true, value: { ok: true, value: { selected: MODEL } } })),
+      stream: vi.fn(() => stream),
+      cancel: vi.fn(async () => ({ ok: true, value: { ok: true, value: { cancelled: true } } })),
+      close: vi.fn(async () => ({ ok: true, value: { ok: true, value: { closed: true } } })),
+    }
+    const dispose = vi.fn(async () => {})
+    const get = vi.fn(() => rpc)
+    const context = { remote: { $mount: vi.fn(async () => dispose) }, get } as unknown as DshClientContext
+    const mounted = await mountSideChatRemote(context)
+    expect(get).toHaveBeenCalledWith('remote.sideChat')
+    expect(await mounted.remote.create({ parentSessionId: SessionId('parent'), atSeq: 7 })).toMatchObject({ ok: true, value: { chatId: 'chat' } })
+    expect(await mounted.remote.selectModel({ chatId: SideChatId('chat'), ...MODEL })).toMatchObject({ ok: true, value: { selected: MODEL } })
+    const handle = mounted.remote.stream({ chatId: SideChatId('chat'), requestId: 'turn', text: 'Question' })
+    expect(handle).toBe(stream)
+    handle.dispose()
+    expect(stream.disposed).toBe(true)
+    expect(await mounted.remote.cancel({ chatId: SideChatId('chat') })).toEqual({ ok: true, value: { cancelled: true } })
+    expect(await mounted.remote.close({ chatId: SideChatId('chat') })).toEqual({ ok: true, value: { closed: true } })
     await mounted.dispose()
     expect(dispose).toHaveBeenCalledOnce()
+  })
+  it('translates RPC failures without wrapping stream handles in unary result envelopes', async () => {
+    const rpc = { create: vi.fn(async () => ({ ok: false, error: { code: 'gateway/bad-request', message: 'Invalid boundary' } })) }
+    const mounted = await mountSideChatRemote({ remote: { $mount: async () => async () => {} }, get: () => rpc } as unknown as DshClientContext)
+    expect(await mounted.remote.create({ parentSessionId: SessionId('parent'), atSeq: 2.5 })).toEqual({
+      ok: false, error: { code: 'invalid_request', message: 'Invalid boundary', recoverable: false },
+    })
+  })
+  it('declares strict stream item codecs and injects carrier cancellation on the Host', () => {
+    const stream = SIDE_CHAT_INVOCATIONS.find(item => item.method === 'stream')!
+    expect(stream).toMatchObject({ namespace: 'sideChat', mode: 'stream', cancellation: { parameter: 'signal' } })
+    if (stream.result.mode !== 'strict') throw new Error('strict stream schema missing')
+    expect(stream.result.create().parse({ type: 'content', text: 'Answer', reasoning: '' })).toEqual({ type: 'content', text: 'Answer', reasoning: '' })
+    expect(() => stream.result.mode === 'strict' && stream.result.create().parse({ type: 'tool-call', name: 'write' })).toThrow()
+    expect(SIDE_CHAT_INVOCATIONS.every(item => item.namespace === 'sideChat')).toBe(true)
   })
 })

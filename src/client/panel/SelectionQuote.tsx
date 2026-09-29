@@ -85,6 +85,13 @@ export function SelectionQuote({
       }}
       onMouseLeave={closeHoverAfterGrace}
       onFocusCapture={constrainDetailsToBoundary}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || (!expanded && !hovered)) return
+        event.preventDefault()
+        event.stopPropagation()
+        setExpanded(false)
+        setHovered(false)
+      }}
     >
       <div className="dsh-side-chat-quote-chip">
         <button

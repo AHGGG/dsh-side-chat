@@ -4,52 +4,58 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import sideChatCss from './panel/side-chat.css'
 import { selectionReferenceSource } from './parent-composer/add-to-conversation.js'
 import { mountParentConversationAnnotations } from './parent-composer/ParentConversationAnnotations.js'
 import { sideChatConversationReferenceSource } from './parent-composer/referenced-conversation.js'
 import { SideChatController } from './side-chat-controller.js'
-import { mountArchivedRemote } from './rc6/remote-adapter.js'
-import { Rc6SideChatOverlay } from './rc6/Rc6SideChatOverlay.js'
-import { Rc6SideChatSessions } from './rc6/sessions-adapter.js'
-import type { Rc6ClientContext } from './rc6/context.js'
+import { mountSideChatRemote } from './dsh/remote-adapter.js'
+import { SideChatOverlay } from './dsh/SideChatOverlay.js'
+import { DshSideChatSessions } from './dsh/sessions-adapter.js'
+import type { DshClientContext } from './dsh/context.js'
 
 export const name = 'side-chat-client'
-export const inject = ['conversation', 'inputTriggers', 'modelDirectories', 'remote', 'sessions', 'slots']
+export const inject = ['conversation', 'inputTriggers', 'modelDirectories', 'remote', 'sessions', 'slots', 'uiConversation', 'uiWorkspace']
 
 export async function apply(ctx: Context): Promise<void> {
-  const stylesheet = document.createElement('style')
-  stylesheet.textContent = sideChatCss
-  stylesheet.dataset.plugin = 'dsh-side-chat'
-  stylesheet.dataset['dshSideChat'] = 'styles'
-  document.head.append(stylesheet)
+  const cleanups: Array<() => void | Promise<void>> = []
+  let disposed = false
+  let cleanupOperation: Promise<void> | undefined
+  const cleanup = (): Promise<void> => {
+    disposed = true
+    cleanupOperation ??= (async () => {
+      for (const dispose of cleanups.splice(0).reverse()) {
+        try { await dispose() } catch (error) { console.warn('[dsh-side-chat] Cleanup failed', error) }
+      }
+    })()
+    return cleanupOperation
+  }
+  ctx.effect(() => cleanup, 'dsh-side-chat.clientLifecycle')
+  try {
+    const stylesheet = document.createElement('style')
+    stylesheet.textContent = sideChatCss
+    stylesheet.dataset.plugin = 'dsh-side-chat'
+    stylesheet.dataset['dshSideChat'] = 'styles'
+    document.head.append(stylesheet)
+    cleanups.push(() => { stylesheet.remove() })
 
-  const clientCtx = ctx as unknown as Rc6ClientContext
-  const mounted = await mountArchivedRemote(clientCtx)
-  const removeSelectionReferenceSource = clientCtx.inputTriggers.registerSource(selectionReferenceSource)
-  const removeConversationReferenceSource = clientCtx.inputTriggers.registerSource(sideChatConversationReferenceSource)
-  const sessions = new Rc6SideChatSessions(clientCtx)
-  const removeParentAnnotations = mountParentConversationAnnotations(
-    clientCtx,
-    () => { sessions.removeConversationAnnotations() },
-  )
-  const controller = new SideChatController(mounted.remote, sessions)
-  const removeOverlay = clientCtx.slots.inject('shell.overlay', () => clientCtx.slots.register({
-    name: 'shell.overlay',
-    id: 'dsh-side-chat',
-    order: 90,
-  }, () => createElement(Rc6SideChatOverlay, { controller, sessions })))
-
-  ctx.effect(() => async () => {
-    try {
-      await controller.dispose()
-    } finally {
-      removeParentAnnotations()
-      removeConversationReferenceSource()
-      removeSelectionReferenceSource()
-      removeOverlay()
-      await mounted.dispose()
-      stylesheet.remove()
-    }
-  }, 'dsh-side-chat.clientLifecycle')
+    const clientCtx = ctx as unknown as DshClientContext
+    const mounted = await mountSideChatRemote(clientCtx)
+    if (disposed) { await mounted.dispose(); return }
+    cleanups.push(mounted.dispose)
+    cleanups.push(clientCtx.inputTriggers.registerSource(selectionReferenceSource))
+    cleanups.push(clientCtx.inputTriggers.registerSource(sideChatConversationReferenceSource))
+    const sessions = new DshSideChatSessions(clientCtx)
+    cleanups.push(mountParentConversationAnnotations(clientCtx,
+      sessionId => { sessions.removeConversationAnnotations(sessionId) }))
+    const controller = new SideChatController(mounted.remote, sessions)
+    cleanups.push(() => controller.dispose())
+    cleanups.push(clientCtx.slots.inject('shell.overlay', () => clientCtx.slots.register({
+      name: 'shell.overlay', id: 'dsh-side-chat', order: 90,
+    }, () => createElement(SideChatOverlay, { controller, sessions }))))
+  } catch (error) {
+    await cleanup()
+    throw error
+  }
 }

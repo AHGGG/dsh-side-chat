@@ -3,6 +3,7 @@ import type { CSSProperties, MouseEvent } from 'react'
 import type { ConversationSelection, SelectionRect } from '../../shared/contracts.js'
 import type { ConversationSelectionAnnotation } from '../parent-composer/add-to-conversation.js'
 import { restoreDomConversationSelection } from './selection-controller.js'
+import { conversationChatRoot } from './conversation-dom.js'
 
 const ANNOTATION_HIGHLIGHT = 'dsh-side-chat-annotations'
 const ACTIVE_ANNOTATION_HIGHLIGHT = 'dsh-side-chat-active-annotation'
@@ -188,7 +189,8 @@ export function ConversationAnnotationMarkers({
     let resizeObserver: ResizeObserver | undefined
     const refresh = (): void => {
       animationFrame = undefined
-      const conversationRoot = document.querySelector<HTMLElement>('[data-chat-flow]')
+      const sessionId = annotations[0]?.selection.parentSessionId
+      const conversationRoot = sessionId === undefined ? null : conversationChatRoot(sessionId) ?? null
       if (conversationRoot !== observedConversationRoot) {
         resizeObserver?.disconnect()
         observedConversationRoot = conversationRoot
@@ -200,6 +202,7 @@ export function ConversationAnnotationMarkers({
       const activeRanges: Range[] = []
       if (conversationRoot !== null) {
         for (const annotation of annotations) {
+          if (annotation.selection.parentSessionId !== sessionId) continue
           const restored = restoreDomConversationSelection({
             selection: annotation.selection,
             conversationRoot,

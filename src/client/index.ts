@@ -2,9 +2,6 @@ export { apply, inject, name } from './apply.js'
 export type {
   SideChatActionResult,
   SideChatClientSessions,
-  SideChatSessionBinding,
-  SideChatSessionLease,
-  SideChatSessionSnapshot,
 } from './contracts.js'
 export { SideChatController } from './side-chat-controller.js'
 export { buildSideChatPrompt } from './parent-composer/add-to-conversation.js'
@@ -30,5 +27,7 @@ export type {
   SelectionFragment,
   SelectionRect,
   SideChatModelSelection,
+  SideChatMessage,
+  SideChatId,
   SideChatState,
 } from '../shared/contracts.js'

@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
-import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import { ArchivedForkSideChatService } from './host/archived-fork-service.js';
-import type { CloseSideChatRequest, CloseSideChatValue, CreateSideChatRequest, CreateSideChatValue, SelectSideChatModelRequest, SelectSideChatModelValue, SideChatResult } from './shared/contracts.js';
+import { TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol';
+import { ReadOnlySideChatService } from './host/read-only-chat-service.js';
+import type { ChatRequest, CreateSideChatRequest, CreateSideChatValue, SelectSideChatModelRequest, SelectSideChatModelValue, SendSideChatRequest, SideChatResult, SideChatStreamEvent } from './shared/contracts.js';
 export * from './host/index.js';
 export * from './shared/constants.js';
 export * from './shared/contracts.js';
@@ -11,13 +11,21 @@ declare module '@deepseek-ai/cordis' {
         sideChat: DshSideChatPlugin;
     }
 }
-/** Stock DSH rc.6 Host plugin. */
+/** Read-only model calls; no Agent, Session, or workspace lifecycle is created. */
 export declare class DshSideChatPlugin extends TypertRemoteService {
     static inject: string[];
-    readonly archived: ArchivedForkSideChatService;
+    readonly conversations: ReadOnlySideChatService;
+    private readonly owners;
     constructor(ctx: Context);
-    createArchived(request: CreateSideChatRequest): Promise<SideChatResult<CreateSideChatValue>>;
-    selectArchivedModel(request: SelectSideChatModelRequest): Promise<SideChatResult<SelectSideChatModelValue>>;
-    closeArchived(request: CloseSideChatRequest): Promise<SideChatResult<CloseSideChatValue>>;
+    create(request: CreateSideChatRequest, signal: AbortSignal): Promise<SideChatResult<CreateSideChatValue>>;
+    selectModel(request: SelectSideChatModelRequest, signal: AbortSignal): Promise<SideChatResult<SelectSideChatModelValue>>;
+    stream(request: SendSideChatRequest, signal: AbortSignal): RemoteStream<SideChatStreamEvent>;
+    cancel(request: ChatRequest): Promise<SideChatResult<{
+        cancelled: true;
+    }>>;
+    close(request: ChatRequest): Promise<SideChatResult<{
+        closed: true;
+    }>>;
+    private owner;
 }
 export default DshSideChatPlugin;

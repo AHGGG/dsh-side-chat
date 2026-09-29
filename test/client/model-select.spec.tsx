@@ -33,20 +33,22 @@ const catalog = {
     }],
   }],
   failures: [],
+  pending: null,
 } satisfies Omit<ModelDirectoryState, 'error' | 'status'>
 
-function modelDirectory(): ModelDirectory {
-  const state = {
-    status: 'ready' as const,
+function modelDirectory(overrides: Partial<ModelDirectoryState> = {}): ModelDirectory {
+  const state: ModelDirectoryState = {
+    status: 'ready',
     ...catalog,
     error: null,
+    ...overrides,
   }
   return {
     store: {
       getSnapshot: () => state,
       subscribe: () => () => {},
     },
-    load: vi.fn(async () => catalog),
+    load: vi.fn(async () => state),
   } as unknown as ModelDirectory
 }
 
@@ -119,6 +121,34 @@ describe('SideChatModelSelect', () => {
     await waitFor(() => {
       expect(onInitialize).toHaveBeenCalledWith(expected, { remember: true })
     })
+  })
+
+  it('does not overwrite a remembered model after a partial catalog failure', () => {
+    const directory = modelDirectory({
+      failures: [{ id: 'offline', name: 'Offline', message: 'Unavailable' }],
+    })
+    const onInitialize = vi.fn()
+    render(<SideChatModelSelect
+      directory={directory}
+      selection={{ provider: 'offline', model: 'saved-model' }} locked={false}
+      onInitialize={onInitialize} onSelect={vi.fn()}
+    />)
+    expect(onInitialize).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Select model, current saved-model' })).toBeInTheDocument()
+  })
+
+  it('unlocks model controls after a rejected selection promise', async () => {
+    const onSelect = vi.fn().mockRejectedValue(new Error('Provider unavailable'))
+    render(<SideChatModelSelect directory={modelDirectory()} locked={false}
+      onInitialize={vi.fn()} onSelect={onSelect} />)
+    fireEvent.click(screen.getByRole('button', { name: /Select model/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Model/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Flash/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('menuitemradio', { name: /Flash/ })).not.toBeDisabled()
+      expect(onSelect).toHaveBeenCalledOnce()
+    })
+    expect(await screen.findByText('Model operation failed: Provider unavailable')).toBeInTheDocument()
   })
 
   it('switches provider models without carrying another model effort', async () => {

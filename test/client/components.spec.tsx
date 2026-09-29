@@ -3,1051 +3,183 @@ import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SideChatPanel } from '../../src/client/panel/SideChatPanel.js'
-import {
-  annotatedUserMessageRenderer,
-  mountParentConversationAnnotations,
-  ParentComposerAnnotations,
-} from '../../src/client/parent-composer/ParentConversationAnnotations.js'
-import {
-  serializeReferencedConversation,
-  type ReferencedSideChatConversation,
-} from '../../src/client/parent-composer/referenced-conversation.js'
-import { ArchivedConversation } from '../../src/client/rc6/ArchivedConversation.js'
-import type {
-  SideChatConversationFace,
-  SideChatConversationSnapshot,
-} from '../../src/client/rc6/runtime-compat.js'
 import { SelectionActions } from '../../src/client/selection/SelectionActions.js'
-
-// Fixture aliases keep the historical test vocabulary while targeting the
-// plugin's version-neutral client contract.
-type ConversationSnapshot = SideChatConversationSnapshot
-type SessionFace = SideChatConversationFace
-import type { SideChatController } from '../../src/client/side-chat-controller.js'
-import type { ConversationSelection, SideChatState } from '../../src/shared/contracts.js'
-import { SessionId } from '../../src/shared/contracts.js'
+import { annotatedUserMessageRenderer, mountParentConversationAnnotations, ParentComposerAnnotations } from '../../src/client/parent-composer/ParentConversationAnnotations.js'
+import { addSelectionToConversation, buildSideChatPrompt } from '../../src/client/parent-composer/add-to-conversation.js'
+import { serializeReferencedConversation } from '../../src/client/parent-composer/referenced-conversation.js'
+import { SessionId, SideChatId, type ConversationSelection, type SideChatState } from '../../src/shared/contracts.js'
+import { lexicalComposerReferenceFixture } from './composer-reference-fixture.js'
 
 const selection: ConversationSelection = {
-  parentSessionId: SessionId('parent-1'),
-  fragments: [],
-  text: 'A selected passage.',
-  atSeq: 7,
+  parentSessionId: SessionId('parent-1'), fragments: [], text: 'A selected passage.', atSeq: 7,
   rect: { x: 100, y: 100, width: 80, height: 20, viewportWidth: 800, viewportHeight: 600 },
 }
+const draftState: SideChatState = { phase: 'draft', parentSessionId: SessionId('parent-1'), selection,
+  draft: 'What does this mean?', messages: [] }
+const ok = async () => ({ ok: true as const, value: undefined })
+const panelProps = { state: draftState, onDraftChange: () => {}, onFirstSend: ok,
+  onClose: ok, onRetry: ok, onFocusParent: () => {} }
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
+const NativeUserMessage = ({ node }: { readonly node: { readonly data: {
+  readonly content: readonly unknown[]; readonly referenceLabels?: readonly string[]
+} } }) => <div data-testid="native-message" data-labels={JSON.stringify(node.data.referenceLabels ?? [])}>
+  {node.data.content.map(block => typeof block === 'object' && block !== null && 'text' in block ? String(block.text) : '').join('')}
+</div>
 
-const draftState: SideChatState = {
-  phase: 'draft',
-  parentSessionId: SessionId('parent-1'),
-  selection,
-  draft: 'What does this mean?',
-}
-
-afterEach(cleanup)
-
-describe('Side Chat components', () => {
-  it('collects an optional comment before adding the selection to chat', () => {
-    const add = vi.fn()
-    const ask = vi.fn()
-    const moreDetails = vi.fn()
-    const dismiss = vi.fn()
-    render(<SelectionActions
-      selection={selection}
-      onAddToChat={add}
-      onMoreDetails={moreDetails}
-      onAskInSideChat={ask}
-      onDismiss={dismiss}
-    />)
-    const buttons = screen.getAllByRole('button')
-    expect(buttons.map(button => button.textContent)).toEqual(['Add to chat', 'More details', 'Ask in side chat'])
+describe('Side Chat panel and parent annotations', () => {
+  it('collects a comment, while Ask and More details open focused discussions', () => {
+    const add = vi.fn(), ask = vi.fn(), more = vi.fn(), dismiss = vi.fn()
+    const actions = <SelectionActions selection={selection} onAddToChat={add} onAskInSideChat={ask} onMoreDetails={more} onDismiss={dismiss} />
+    render(actions)
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['Add to chat', 'More details', 'Ask in side chat'])
     fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
-    expect(screen.getByRole('dialog', { name: 'Add annotation comment' })).toBeInTheDocument()
-    expect(document.querySelector('.dsh-side-chat-selection-marker')).toHaveStyle({
-      left: '183px',
-      top: '88px',
-    })
-    expect(add).not.toHaveBeenCalled()
-    fireEvent.change(screen.getByRole('textbox', { name: 'Optional annotation comment' }), {
-      target: { value: 'This is the key line.' },
-    })
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Optional annotation comment' }), { key: 'Enter' })
-    expect(add).toHaveBeenCalledWith(selection, 'This is the key line.')
+    const input = screen.getByRole('textbox', { name: 'Optional annotation comment' })
+    fireEvent.change(input, { target: { value: 'Important' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(add).toHaveBeenCalledWith(selection, 'Important')
     expect(dismiss).toHaveBeenCalledOnce()
-
-    cleanup()
-    render(<SelectionActions
-      selection={selection}
-      onAddToChat={add}
-      onMoreDetails={moreDetails}
-      onAskInSideChat={ask}
-      onDismiss={dismiss}
-    />)
-    dismiss.mockClear()
+    cleanup(); render(actions)
     fireEvent.click(screen.getByRole('button', { name: 'More details' }))
-    expect(moreDetails).toHaveBeenCalledWith(selection)
-    expect(dismiss).toHaveBeenCalledOnce()
-
-    dismiss.mockClear()
+    expect(more).toHaveBeenCalledWith(selection)
+    cleanup(); render(actions)
     fireEvent.click(screen.getByRole('button', { name: 'Ask in side chat' }))
     expect(ask).toHaveBeenCalledWith(selection)
-    expect(dismiss).toHaveBeenCalledOnce()
   })
-
-  it('opens an existing annotation directly for comment editing', () => {
+  it('edits an existing annotation without reopening the selection toolbar', () => {
     const update = vi.fn()
-    const dismiss = vi.fn()
-    render(<SelectionActions
-      selection={selection}
-      annotationNumber={2}
-      annotationEditor={{
-        initialComment: 'Existing note',
-        dialogLabel: 'Edit annotation comment',
-      }}
-      onAddToChat={update}
-      onMoreDetails={() => {}}
-      onAskInSideChat={() => {}}
-      onDismiss={dismiss}
-    />)
-
+    render(<SelectionActions selection={selection} annotationNumber={2}
+      annotationEditor={{ initialComment: 'Existing note', dialogLabel: 'Edit annotation comment' }}
+      onAddToChat={update} onMoreDetails={() => {}} onAskInSideChat={() => {}} onDismiss={() => {}} />)
     const editor = screen.getByRole('textbox', { name: 'Optional annotation comment' })
-    expect(screen.getByRole('dialog', { name: 'Edit annotation comment' })).toBeInTheDocument()
     expect(editor).toHaveValue('Existing note')
     expect(screen.queryByRole('button', { name: 'Add to chat' })).not.toBeInTheDocument()
     fireEvent.change(editor, { target: { value: 'Revised note' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(update).toHaveBeenCalledWith(selection, 'Revised note')
-    expect(dismiss).toHaveBeenCalledOnce()
   })
-
-  it('shows why another Side Chat cannot be opened', () => {
-    render(<SelectionActions
-      selection={selection}
-      askDisabledReason="Close the current Side Chat first"
-      onAddToChat={() => {}}
-      onMoreDetails={() => {}}
-      onAskInSideChat={() => {}}
-      onDismiss={() => {}}
-    />)
-    expect(screen.getByRole('button', { name: 'More details' }))
-      .toHaveAttribute('title', 'Close the current Side Chat first')
-    expect(screen.getByRole('button', { name: 'Ask in side chat' }))
-      .toHaveAttribute('title', 'Close the current Side Chat first')
+  it('explains why opening another discussion is disabled', () => {
+    render(<SelectionActions selection={selection} askDisabledReason="Close the current Side Chat first"
+      onAddToChat={() => {}} onMoreDetails={() => {}} onAskInSideChat={() => {}} onDismiss={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Ask in side chat' })).toHaveAttribute('title', 'Close the current Side Chat first')
+    expect(screen.getByRole('button', { name: 'More details' })).toHaveAttribute('title', 'Close the current Side Chat first')
   })
-
-  it('submits and closes directly without a confirmation dialog', async () => {
-    const send = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    const close = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    render(<SideChatPanel
-      state={draftState}
-      onDraftChange={() => {}}
-      onFirstSend={send}
-      onClose={close}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-    />)
-    const attachment = screen.getByRole('button', { name: 'Expand: Selected passage' })
-    const quote = attachment.closest('.dsh-side-chat-quote')
-    expect(attachment).toHaveTextContent('1 annotation')
-    expect(quote).not.toHaveAttribute('data-expanded')
-    fireEvent.click(attachment)
-    expect(quote).toHaveAttribute('data-expanded')
-    expect(screen.getByText('A selected passage.')).toBeInTheDocument()
+  it('submits plain text and closes without a confirmation dialog', async () => {
+    const send = vi.fn(ok), close = vi.fn(ok)
+    render(<SideChatPanel {...panelProps} onFirstSend={send} onClose={close} />)
+    const quote = screen.getByRole('button', { name: 'Expand: Selected passage' })
+    expect(quote).toHaveTextContent('1 annotation')
+    fireEvent.click(quote)
+    expect(screen.getByText(selection.text)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => { expect(send).toHaveBeenCalledWith('What does this mean?') })
+    await waitFor(() => expect(send).toHaveBeenCalledWith(draftState.draft))
     fireEvent.click(screen.getByRole('button', { name: 'Close Side Chat' }))
-    await waitFor(() => { expect(close).toHaveBeenCalledOnce() })
+    expect(close).toHaveBeenCalledOnce()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByText('Read-only parent context; no Session copy')).toBeInTheDocument()
+    expect(screen.getByText('No tools or file changes')).toBeInTheDocument()
   })
-
-  it('shows the add-to-conversation action in the modal header', () => {
-    const add = vi.fn()
-    const state: SideChatState = {
-      ...draftState,
-      phase: 'ready',
-      childSessionId: SessionId('child-1'),
-      inheritedThroughSeq: 7,
-    }
-    const { rerender } = render(<SideChatPanel
-      state={state}
-      embeddedConversation={<div>Child transcript</div>}
-      onDraftChange={() => {}}
-      onFirstSend={async () => ({ ok: true, value: undefined })}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-      onAddToConversation={add}
-    />)
-
-    const button = screen.getByRole('button', { name: 'Add to conversation' })
-    expect(button.closest('header')).toHaveClass('dsh-side-chat-header')
-    expect(button.querySelector('svg')).toHaveClass('dsh-side-chat-add-to-conversation-icon')
-    fireEvent.click(button)
-    expect(add).toHaveBeenCalledOnce()
-
-    rerender(<SideChatPanel
-      state={{ ...state, phase: 'running' }}
-      embeddedConversation={<div>Child transcript</div>}
-      onDraftChange={() => {}}
-      onFirstSend={async () => ({ ok: true, value: undefined })}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-      onAddToConversation={add}
-      addToConversationDisabled
-    />)
-    expect(screen.getByRole('button', { name: 'Add to conversation' })).toBeDisabled()
-  })
-
-  it('sends the first question with Enter and preserves Shift+Enter for a newline', async () => {
-    const send = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    render(<SideChatPanel
-      state={draftState}
-      onDraftChange={() => {}}
-      onFirstSend={send}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-    />)
-    const input = screen.getByRole('textbox', { name: 'Ask about this in a Side Chat' })
-
+  it('handles IME and Shift+Enter without sending, then sends on Enter', async () => {
+    const send = vi.fn(ok)
+    render(<SideChatPanel {...panelProps} onFirstSend={send} />)
+    const input = screen.getByRole('textbox')
     expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true)
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
     expect(send).not.toHaveBeenCalled()
-    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false)
-    await waitFor(() => { expect(send).toHaveBeenCalledWith('What does this mean?') })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(send).toHaveBeenCalledOnce())
   })
-
-  it('removes the selection attachment before the first send', () => {
+  it('lets the expanded preview consume Escape before the panel', () => {
+    const close = vi.fn(ok)
+    render(<SideChatPanel {...panelProps} onClose={close} />)
+    const quote = screen.getByRole('button', { name: 'Expand: Selected passage' })
+    fireEvent.click(quote); fireEvent.keyDown(quote, { key: 'Escape' })
+    expect(close).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
+    expect(close).toHaveBeenCalledOnce()
+  })
+  it('removes the selected attachment before context capture', () => {
     const remove = vi.fn()
-    render(<SideChatPanel
-      state={draftState}
-      onDraftChange={() => {}}
-      onFirstSend={async () => ({ ok: true, value: undefined })}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-      onRemoveSelection={remove}
-    />)
-
+    render(<SideChatPanel {...panelProps} onRemoveSelection={remove} />)
     fireEvent.click(screen.getByRole('button', { name: 'Remove annotation' }))
     expect(remove).toHaveBeenCalledOnce()
   })
-
-  it('keeps the selection preview inside the Side Chat panel', () => {
-    render(<SideChatPanel
-      state={draftState}
-      onDraftChange={() => {}}
-      onFirstSend={async () => ({ ok: true, value: undefined })}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-    />)
-
+  it('constrains the preview to the panel boundary', () => {
+    render(<SideChatPanel {...panelProps} />)
     const panel = screen.getByRole('complementary', { name: 'Side Chat' })
-    const quote = screen.getByRole('region', { name: 'Selected passage' })
     const preview = screen.getByRole('tooltip')
     vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 700 } as DOMRect)
     vi.spyOn(preview, 'getBoundingClientRect').mockReturnValue({ left: 50, right: 570 } as DOMRect)
-
-    fireEvent.mouseEnter(quote)
-
+    fireEvent.mouseEnter(screen.getByRole('region', { name: 'Selected passage' }))
     expect(preview.style.getPropertyValue('--dsh-side-chat-quote-offset-x')).toBe('66px')
   })
-
-  it('keeps the annotation preview open while the pointer crosses the popup gap', () => {
+  it('keeps the preview open across the pointer gap', () => {
     vi.useFakeTimers()
     try {
-      render(<SideChatPanel
-        state={draftState}
-        onDraftChange={() => {}}
-        onFirstSend={async () => ({ ok: true, value: undefined })}
-        onClose={async () => ({ ok: true, value: undefined })}
-        onRetry={async () => ({ ok: true, value: undefined })}
-        onFocusParent={() => {}}
-      />)
+      render(<SideChatPanel {...panelProps} />)
       const quote = screen.getByRole('region', { name: 'Selected passage' })
-      fireEvent.mouseEnter(quote)
-      fireEvent.mouseLeave(quote)
-      expect(quote).toHaveAttribute('data-hovered')
+      fireEvent.mouseEnter(quote); fireEvent.mouseLeave(quote)
       act(() => { vi.advanceTimersByTime(219) })
       expect(quote).toHaveAttribute('data-hovered')
       act(() => { vi.advanceTimersByTime(1) })
       expect(quote).not.toHaveAttribute('data-hovered')
-    } finally {
-      vi.useRealTimers()
-    }
+    } finally { vi.useRealTimers() }
   })
-
-  it('reserves the visible annotation width for the hidden composer occurrence', () => {
-    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      width: 150.75,
-    } as DOMRect)
-    try {
-      const { unmount } = render(
-        <div data-composer-seat="">
-          <ParentComposerAnnotations
-            input={{
-              draft: 'Selected text ',
-              draftRev: 1,
-              occurrences: [{
-                occurrenceId: 1,
-                source: 'dsh-side-chat-selection',
-                ref: JSON.stringify({ version: 2, annotations: [{ text: 'Selected text' }] }),
-                offset: 0,
-                length: 13,
-                label: '__dsh_side_chat_annotations__',
-                clipboardText: 'Selected text',
-              }],
-            }}
-            onRemove={() => {}}
-            locale="en"
-          />
-          <span data-composer-chip="dsh-side-chat-selection" />
-        </div>,
-      )
-      const seat = document.querySelector<HTMLElement>('[data-composer-seat]')
-      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('150.75px')
-
-      unmount()
-      expect(seat?.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('')
-    } finally {
-      rect.mockRestore()
-    }
+  it('shows the add action only when its caller allows capturing the transcript', () => {
+    const add = vi.fn()
+    const state: SideChatState = { ...draftState, phase: 'ready', chatId: SideChatId('discussion'),
+      messages: [{ id: 'u', role: 'user', text: 'Why?', status: 'complete' }] }
+    const { rerender } = render(<SideChatPanel {...panelProps} state={state}
+      embeddedConversation={<div>Transcript</div>} onAddToConversation={add} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to conversation' }))
+    expect(add).toHaveBeenCalledOnce()
+    expect(screen.getByText('Transcript')).toBeInTheDocument()
+    rerender(<SideChatPanel {...panelProps} state={{ ...state, phase: 'running' }} onAddToConversation={add} addToConversationDisabled />)
+    expect(screen.getByRole('button', { name: 'Add to conversation' })).toBeDisabled()
   })
-
-  it('mounts the zero-height annotation projection after Todo, Goal, and Queue docks', () => {
-    const register = vi.fn(() => () => {})
-    const inject = vi.fn((_name: string, mount: () => () => void) => mount())
-    const dispose = mountParentConversationAnnotations({
-      slots: {
-        inject,
-        register,
-        entries: () => [],
-      },
-    } as never, () => {})
-
-    expect(register).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'conversation.input.dock',
-        id: 'dsh-side-chat-annotations',
-        order: 30,
-      }),
-      expect.anything(),
-    )
-    dispose()
-  })
-
-  it('renders sent main-chat annotations above the native user message', () => {
-    const NativeUserMessage = ({ node }: {
-      readonly node: { readonly data: { readonly content: readonly unknown[] } }
-    }) => (
-      <div className="native-user-row" data-testid="native-user-message">
-        {node.data.content.map(block => (
-          typeof block === 'object' && block !== null && 'text' in block
-            ? String((block as { readonly text: unknown }).text)
-            : ''
-        )).join('')}
-      </div>
-    )
-    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
-    render(<Renderer node={{
-      data: {
-        content: [{
-          type: 'text',
-          text: [
-            '<selected_context>',
-            '<annotation index="1">',
-            '<selected_text>',
-            'First passage',
-            '</selected_text>',
-            '<user_comment>',
-            'Explain this one first.',
-            '</user_comment>',
-            '</annotation>',
-            '<annotation index="2">',
-            'Second passage',
-            '</annotation>',
-            '</selected_context>',
-            '',
-            'Explain both.',
-          ].join('\n'),
-        }],
-      },
-    }} />)
-
-    const trigger = screen.getByRole('button', { name: 'Expand: Selected passage' })
-    const quote = trigger.closest<HTMLElement>('.dsh-side-chat-quote')!
-    expect(trigger).toHaveTextContent('2 annotations')
-    expect(screen.getByTestId('native-user-message')).toHaveTextContent('Explain both.')
-    expect(screen.getByTestId('native-user-message')).not.toHaveTextContent('selected_context')
-    expect(screen.getByTestId('native-user-message').parentElement)
-      .toHaveClass('dsh-side-chat-parent-user-message-body')
-
-    fireEvent.mouseEnter(quote)
-    fireEvent.click(trigger)
-    expect(quote).toHaveAttribute('data-expanded')
-    expect(screen.getByText('First passage')).toBeInTheDocument()
-    expect(screen.getByText('Explain this one first.')).toBeInTheDocument()
-    expect(screen.getByText('Second passage')).toBeInTheDocument()
-    fireEvent.mouseDown(document.body)
-    expect(quote).not.toHaveAttribute('data-expanded')
-    expect(quote).not.toHaveAttribute('data-hovered')
-
-    fireEvent.mouseEnter(quote)
-    fireEvent.click(trigger)
-    fireEvent.click(trigger)
-    expect(quote).not.toHaveAttribute('data-expanded')
-    expect(quote).not.toHaveAttribute('data-hovered')
-    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Remove annotation' })).not.toBeInTheDocument()
-  })
-
-  it('projects a sent referenced conversation as one native session label', () => {
-    const reference: ReferencedSideChatConversation = {
-      version: 1,
-      conversationId: SessionId('child-1'),
-      title: 'Side Chat · Project',
-      conversation: [
-        { role: 'user', content: 'Why?' },
-        { role: 'assistant', content: 'Because this is the result.' },
-      ],
-    }
-    const NativeUserMessage = ({ node }: {
-      readonly node: {
-        readonly data: {
-          readonly content: readonly unknown[]
-          readonly referenceLabels?: readonly string[]
-        }
-      }
-    }) => (
-      <div
-        data-testid="native-referenced-message"
-        data-reference-labels={JSON.stringify(node.data.referenceLabels ?? [])}
-      >
-        {node.data.content.map(block => (
-          typeof block === 'object' && block !== null && 'text' in block
-            ? String((block as { readonly text: unknown }).text)
-            : ''
-        )).join('')}
-      </div>
-    )
-    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
-    render(<Renderer node={{
-      data: {
-        content: [{
-          type: 'text',
-          text: `${serializeReferencedConversation(reference)}\n\nContinue from this discussion.`,
-        }],
-      },
-    }} />)
-
-    const message = screen.getByTestId('native-referenced-message')
-    expect(message).toHaveTextContent('@Side Chat · Project Continue from this discussion.')
-    expect(message).toHaveAttribute('data-reference-labels', '["Side Chat · Project"]')
-    expect(message).not.toHaveTextContent('referenced_conversation')
-    expect(message).not.toHaveTextContent('Because this is the result.')
-  })
-
-  it('keeps a recoverable close error visible with one retry', () => {
-    render(<SideChatPanel
-      state={{
-        ...draftState,
-        phase: 'error',
-        childSessionId: SessionId('child-1'),
-        error: {
-          code: 'side_chat_destroy_failed',
-          message: 'It may still be running.',
-          recoverable: true,
-          operation: 'close',
-        },
-      }}
-      embeddedConversation={<div>Child transcript</div>}
-      onDraftChange={() => {}}
-      onFirstSend={async () => ({ ok: true, value: undefined })}
-      onClose={async () => ({ ok: true, value: undefined })}
-      onRetry={async () => ({ ok: true, value: undefined })}
-      onFocusParent={() => {}}
-    />)
-    expect(screen.getByRole('alert')).toHaveTextContent('It may still be running.')
+  it('keeps close errors visible and retryable', () => {
+    render(<SideChatPanel {...panelProps} state={{ ...draftState, phase: 'error',
+      error: { code: 'transport_error', message: 'Offline', recoverable: true, operation: 'close' } }} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Offline')
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
-
-  it('keeps the rc.6 SessionFace receiver while reading its snapshot', () => {
-    const snapshot = {
-      nodes: [],
-      openState: 'cold',
-      partial: null,
-      pending: [],
-      queue: [],
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe(this: { readonly snapshot: ConversationSnapshot }) {
-        void this.snapshot
-        return () => {}
-      },
-      getSnapshot(this: { readonly snapshot: ConversationSnapshot }) {
-        return this.snapshot
-      },
-    } as unknown as SessionFace
-
-    render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    expect(screen.getByText('Loading Side Chat…')).toBeInTheDocument()
+  it('reserves the visible capsule width for the durable composer reference', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 150.75 } as DOMRect)
+    const fixture = lexicalComposerReferenceFixture()
+    addSelectionToConversation(fixture.input, selection)
+    const { unmount } = render(<div data-composer-seat=""><ParentComposerAnnotations input={fixture.snapshot()} onRemove={() => {}} />
+      <span data-composer-chip="dsh-side-chat-selection" /></div>)
+    const seat = document.querySelector<HTMLElement>('[data-composer-seat]')!
+    expect(seat.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('150.75px')
+    unmount()
+    expect(seat.style.getPropertyValue('--dsh-side-chat-parent-annotation-width')).toBe('')
   })
-
-  it('moves the selection attachment above the first sent user message', async () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'user',
-        seq: 8,
-        content: [{
-          type: 'text',
-          text: '<selected_context>A selected passage.</selected_context>\n<user_question>Why?</user_question>',
-        }],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe(this: { readonly snapshot: ConversationSnapshot }) {
-        void this.snapshot
-        return () => {}
-      },
-      getSnapshot(this: { readonly snapshot: ConversationSnapshot }) {
-        return this.snapshot
-      },
-    } as unknown as SessionFace
-
-    const send = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{ send } as unknown as SideChatController}
-      selection={selection}
-    />)
-
-    const attachment = screen.getByRole('button', { name: 'Expand: Selected passage' })
-    const userMessage = screen.getByText('Why?').closest('article')
-    expect(userMessage).not.toBeNull()
-    expect(attachment.closest('form')).toBeNull()
-    expect(attachment.compareDocumentPosition(userMessage as Node) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
-
-    const reply = screen.getByPlaceholderText('Reply in Side Chat')
-    fireEvent.change(reply, { target: { value: 'Follow up' } })
-    expect(fireEvent.keyDown(reply, { key: 'Enter', shiftKey: true })).toBe(true)
-    expect(send).not.toHaveBeenCalled()
-    expect(fireEvent.keyDown(reply, { key: 'Enter' })).toBe(false)
-    await waitFor(() => { expect(send).toHaveBeenCalledWith('Follow up', 'queue') })
+  it('registers and removes the parent annotation docks and renderer wrappers', () => {
+    const remove = vi.fn()
+    const register = vi.fn(() => remove)
+    const inject = vi.fn((_name: string, mount: () => () => void) => mount())
+    const dispose = mountParentConversationAnnotations({ slots: { register, inject, entries: () => [] } } as never, () => {})
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ name: 'conversation.input.dock', order: 30 }), expect.any(Function))
+    dispose()
+    expect(remove).toHaveBeenCalledTimes(3)
   })
-
-  it('uses DSH\'s icon-only stop action while a response is running', () => {
-    const snapshot = {
-      nodes: [],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: true,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-    const cancel = vi.fn(async () => ({ ok: true as const, value: undefined }))
-
-    render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{ cancel } as unknown as SideChatController}
-    />)
-
-    const stop = screen.getByRole('button', { name: 'Stop generating' })
-    expect(stop).toHaveTextContent('')
-    expect(stop.querySelector('rect')).not.toBeNull()
-    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
-    fireEvent.click(stop)
-    expect(cancel).toHaveBeenCalledOnce()
+  it.each(['\n', '\r\n'])('projects stored annotated prompts without double-decoding literal XML (%j)', newline => {
+    const question = '<user_question>Literal &amp; text.</user_question>'
+    const prompt = buildSideChatPrompt(selection, question)[0]!
+    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
+    render(<Renderer node={{ data: { content: [{ type: 'text', text: ` \n${prompt.text}`.replaceAll('\n', newline) }] } }} />)
+    expect(screen.getByTestId('native-message').textContent?.trim()).toBe(question)
+    expect(screen.getAllByRole('button', { name: 'Expand: Selected passage' })).toHaveLength(1)
   })
-
-  it('renders assistant text as native DSH Markdown', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'assistant',
-        seq: 8,
-        blocks: [{
-          kind: 'text',
-          text: '# Details\n\n**Important**\n\n- First item\n- Second item',
-        }],
-        interrupted: false,
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument()
-    expect(screen.getByText('Important').tagName).toBe('STRONG')
-    expect(screen.getAllByRole('listitem').map(item => item.textContent))
-      .toEqual(['First item', 'Second item'])
-  })
-
-  it('renders settled reasoning with the native Think disclosure', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'assistant',
-        seq: 8,
-        blocks: [{
-          kind: 'reasoning',
-          text: 'Inspect the constraints first.\nThen choose the smallest change.',
-        }],
-        interrupted: false,
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    const reasoning = container.querySelector('[data-variant="think"]')
-    const disclosure = screen.getByRole('button', { name: /Think.*Inspect the constraints first\./u })
-    expect(reasoning).toHaveAttribute('data-state', 'ok')
-    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
-    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-summary'))
-      .toHaveTextContent('Inspect the constraints first.')
-    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-body')).toBeNull()
-
-    fireEvent.click(disclosure)
-    expect(disclosure).toHaveAttribute('aria-expanded', 'true')
-    expect(reasoning?.querySelector('.dsh-side-chat-reasoning-body'))
-      .toHaveTextContent('Inspect the constraints first. Then choose the smallest change.')
-  })
-
-  it('uses the latest reasoning line and running treatment while streaming', () => {
-    const snapshot = {
-      nodes: [],
-      openState: 'open',
-      partial: {
-        turn: 1,
-        step: 1,
-        blocks: [{
-          kind: 'reasoning',
-          text: 'Inspecting files.\nChecking the current renderer.',
-        }],
-      },
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: true,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-      locale="zh-CN"
-    />)
-
-    const reasoning = container.querySelector('[data-variant="think"]')
-    const summary = reasoning?.querySelector('.dsh-side-chat-reasoning-summary')
-    expect(reasoning).toHaveAttribute('data-state', 'running')
-    expect(summary).toHaveAttribute('data-follow-end', 'true')
-    expect(summary).toHaveTextContent('Checking the current renderer.')
-    expect(screen.getByText('运行中')).toHaveClass('dsh-side-chat-reasoning-visually-hidden')
-  })
-
-  it('merges a completed tool call and result into one expandable row', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'assistant',
-        seq: 8,
-        blocks: [{
-          kind: 'tool-call',
-          callId: 'call-read-1',
-          name: 'read',
-          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\package.json"}',
-        }],
-        interrupted: false,
-      }, {
-        kind: 'tool-result',
-        seq: 9,
-        callId: 'call-read-1',
-        call: {
-          name: 'read',
-          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\package.json"}',
-        },
-        callTime: 1,
-        content: [{
-          type: 'text',
-          text: '<path>E:\\github\\dsh-side-chat\\package.json</path>\n<type>file</type>\n<content>\n{"name":"@ahggg/dsh-side-chat"}\n</content>',
-        }],
-        isError: false,
-        callView: null,
-        resultView: null,
-        subCalls: [],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    const rows = container.querySelectorAll('[data-call-id="call-read-1"]')
-    expect(rows).toHaveLength(1)
-    const row = rows[0] as HTMLElement
-    expect(row).toHaveAttribute('data-state', 'success')
-    const toolButton = screen.getByRole('button', { name: /Read.*package\.json/u })
-    expect(toolButton).toHaveTextContent(/Read.*package\.json/u)
-    expect(row).not.toHaveAttribute('data-expanded')
-    fireEvent.click(toolButton)
-    expect(row).toHaveAttribute('data-expanded')
-    expect(row).toHaveTextContent('{"name":"@ahggg/dsh-side-chat"}')
-    expect(screen.queryByText('Input')).not.toBeInTheDocument()
-    expect(screen.queryByText('Output')).not.toBeInTheDocument()
-    expect(screen.queryByText(/<path>/u)).not.toBeInTheDocument()
-  })
-
-  it('renders an in-flight call once while the assistant is streaming', () => {
-    const call = {
-      callId: 'call-grep-1',
-      name: 'grep',
-      argsRaw: '{"pattern":"runningCalls","path":"src"}',
-      turn: 1,
-      step: 1,
-      time: 1,
-      callView: null,
-      subCalls: [],
-    }
-    const snapshot = {
-      nodes: [],
-      openState: 'open',
-      partial: { turn: 1, step: 1, blocks: [{ kind: 'tool-call', ...call }] },
-      pending: [],
-      queue: [],
-      runningCalls: [call],
-      running: true,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    expect(container.querySelectorAll('[data-call-id="call-grep-1"]')).toHaveLength(1)
-    expect(container.querySelector('[data-call-id="call-grep-1"]')).toHaveAttribute('data-state', 'running')
-    expect(screen.getByRole('button', { name: /Search.*runningCalls/u })).toHaveTextContent(/Search.*runningCalls/u)
-    expect(screen.getByText('Running')).toHaveClass('dsh-side-chat-tool-visually-hidden')
-  })
-
-  it('uses the native terminal presenter for a structured Pwsh result', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'tool-result',
-        seq: 8,
-        callId: 'call-pwsh-native',
-        call: {
-          name: 'pwsh',
-          argsRaw: '{"command":"Get-Content package.json","description":"Inspect package metadata"}',
-        },
-        callTime: 1,
-        content: [{ type: 'text', text: '{"name":"@ahggg/dsh-side-chat"}' }],
-        isError: false,
-        callView: {
-          card: 'terminal',
-          title: 'Get-Content package.json',
-          description: 'Inspect package metadata',
-          cwd: '.',
-        },
-        resultView: {
-          card: 'terminal',
-          title: 'Get-Content package.json',
-          output: '{"name":"@ahggg/dsh-side-chat"}',
-          exitCode: 0,
-        },
-        subCalls: [],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-      cwd={'E:\\github\\dsh-side-chat'}
-    />)
-
-    const row = container.querySelector('[data-call-id="call-pwsh-native"]') as HTMLElement
-    const toolButton = screen.getByRole('button', { name: /Pwsh.*Inspect package metadata/u })
-    fireEvent.click(toolButton)
-    expect(row).toHaveAttribute('data-expanded')
-    expect(row.querySelector('.dsh-side-chat-tool-terminal')).toHaveTextContent('Get-Content package.json')
-    expect(row.querySelector('.dsh-side-chat-tool-terminal')).toHaveTextContent('@ahggg/dsh-side-chat')
-  })
-
-  it('uses the native read presenter and shortens workspace paths', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'tool-result',
-        seq: 8,
-        callId: 'call-read-native',
-        call: {
-          name: 'read',
-          argsRaw: '{"file_path":"E:\\\\github\\\\dsh-side-chat\\\\src\\\\client\\\\index.ts"}',
-        },
-        callTime: 1,
-        content: [{ type: 'text', text: 'export const ready = true' }],
-        isError: false,
-        callView: null,
-        resultView: {
-          card: 'read',
-          path: 'E:\\github\\dsh-side-chat\\src\\client\\index.ts',
-          lines: [{ number: 1, text: 'export const ready = true' }],
-          totalLines: 1,
-          lang: 'typescript',
-        },
-        subCalls: [],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-      cwd={'E:\\github\\dsh-side-chat'}
-    />)
-
-    const row = container.querySelector('[data-call-id="call-read-native"]') as HTMLElement
-    const toolButton = screen.getByRole('button', { name: /Read.*src\\client\\index\.ts/u })
-    expect(toolButton).not.toHaveTextContent('E:\\github\\dsh-side-chat')
-    fireEvent.click(toolButton)
-    expect(row.querySelector('.dsh-side-chat-tool-read')).toHaveTextContent('export const ready = true')
-  })
-
-  it('keeps failed tool output collapsed with the native error summary', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'tool-result',
-        seq: 8,
-        callId: 'call-read-error',
-        call: { name: 'read', argsRaw: '{"file_path":"missing-file.txt"}' },
-        callTime: 1,
-        content: [{ type: 'text', text: 'File not found: missing-file.txt' }],
-        isError: true,
-        callView: null,
-        resultView: null,
-        subCalls: [],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    const row = container.querySelector('[data-call-id="call-read-error"]')
-    expect(row).toHaveAttribute('data-state', 'error')
-    expect(row).not.toHaveAttribute('data-expanded')
-    const toolButton = screen.getByRole('button', { name: /Read.*File not found: missing-file\.txt/u })
-    fireEvent.click(toolButton)
-    expect(row).toHaveAttribute('data-expanded')
-    expect(screen.getAllByText('File not found: missing-file.txt')).toHaveLength(2)
-  })
-
-  it('distinguishes a user-stopped tool from a failed tool', () => {
-    const snapshot = {
-      nodes: [{
-        kind: 'tool-result',
-        seq: 8,
-        callId: 'call-pwsh-stopped',
-        call: { name: 'pwsh', argsRaw: '{"command":"Start-Sleep -Seconds 8"}' },
-        callTime: 1,
-        content: [{ type: 'text', text: 'Error: tool call aborted' }],
-        isError: true,
-        error: { name: 'AbortError', code: 'TOOL_CALL_ABORTED' },
-        callView: null,
-        resultView: null,
-        subCalls: [],
-      }],
-      openState: 'open',
-      partial: null,
-      pending: [],
-      queue: [],
-      runningCalls: [],
-      running: false,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    const { container } = render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{} as SideChatController}
-    />)
-
-    const row = container.querySelector('[data-call-id="call-pwsh-stopped"]')
-    expect(row).toHaveAttribute('data-state', 'interrupted')
-    expect(row).not.toHaveAttribute('data-expanded')
-    expect(screen.getByRole('button', { name: /Pwsh.*Start-Sleep -Seconds 8/u })).toBeInTheDocument()
-    expect(screen.getByText('Stopped')).toHaveClass('dsh-side-chat-tool-visually-hidden')
-  })
-
-  it('keeps approval and question tool interactions actionable', () => {
-    const respondApproval = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    const respondQuestion = vi.fn(async () => ({ ok: true as const, value: undefined }))
-    const snapshot = {
-      nodes: [],
-      openState: 'open',
-      partial: null,
-      pending: [{
-        kind: 'approval',
-        key: 'approval:1',
-        toolName: 'Edit',
-        reason: 'Modify one source file',
-        respond: vi.fn(),
-      }, {
-        kind: 'question',
-        key: 'question:1',
-        questions: [{
-          id: 'scope',
-          header: 'Scope',
-          question: 'Which files?',
-          options: [{ label: 'Source only', description: 'Skip generated files' }, { label: 'All files' }],
-        }],
-        respond: vi.fn(),
-      }],
-      queue: [],
-      runningCalls: [],
-      running: true,
-      promptError: null,
-    } as unknown as ConversationSnapshot
-    const face = {
-      snapshot,
-      subscribe() { return () => {} },
-      getSnapshot: () => snapshot,
-    } as unknown as SessionFace
-
-    render(<ArchivedConversation
-      face={face}
-      inheritedThroughSeq={7}
-      controller={{ respondApproval, respondQuestion } as unknown as SideChatController}
-    />)
-
-    expect(screen.getByRole('region', { name: 'Tool approval required' })).toHaveTextContent('Allow tool: Edit?')
-    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }))
-    expect(respondApproval).toHaveBeenCalledWith('approval:1', 'approve')
-
-    fireEvent.click(screen.getByRole('radio', { name: /Source only/u }))
-    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
-    expect(respondQuestion).toHaveBeenCalledWith('question:1', {
-      answers: [{ id: 'scope', selected: ['Source only'] }],
-    })
+  it('renders several referenced discussions as labels, not their serialized histories', () => {
+    const first = { version: 1 as const, conversationId: 'discussion-1', title: 'First', conversation: [{ role: 'user' as const, content: 'Hidden first question' }] }
+    const second = { ...first, conversationId: 'discussion-2', title: 'Second' }
+    const Renderer = annotatedUserMessageRenderer(NativeUserMessage)
+    render(<Renderer node={{ data: { content: [{ type: 'text',
+      text: `${serializeReferencedConversation(first)}\n\n${serializeReferencedConversation(second)}\n\nContinue.`,
+    }] } }} />)
+    expect(screen.getByTestId('native-message')).toHaveTextContent('@First @Second Continue.')
+    expect(screen.getByTestId('native-message')).toHaveAttribute('data-labels', '["First","Second"]')
+    expect(screen.getByTestId('native-message')).not.toHaveTextContent('Hidden first question')
   })
 })

@@ -20,7 +20,7 @@ export interface RestoredConversationSelection {
     readonly browserRange: Range;
 }
 /**
- * Locked-commit fallback capture. It intentionally fails closed unless every
+ * Capture against DSH's public Chat anchors. Fail closed unless every
  * selected text node belongs to one public Chat anchor.
  */
 export declare function captureDomConversationSelection(input: {

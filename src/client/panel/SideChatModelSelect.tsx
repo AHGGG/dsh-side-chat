@@ -11,10 +11,10 @@ import {
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ModelDirectory } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import {
-  IconCheckOutline16,
-  IconChevronDownOutline14,
-  IconChevronRightOutline14,
-  IconWarningOutline16,
+  IconCheckOutlineRegular as IconCheckOutline16,
+  IconChevronDownOutlineRegular as IconChevronDownOutline14,
+  IconChevronRightOutlineRegular as IconChevronRightOutline14,
+  IconWarningOutlineRegular as IconWarningOutline16,
   Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SideChatModelSelection } from '../../shared/contracts.js'
@@ -159,6 +159,7 @@ export function SideChatModelSelect({
   const initialized = useRef(false)
   const operation = useRef(0)
   const toastSequence = useRef(0)
+  const selectionPending = useRef(false)
   const id = useId()
 
   const choices = useMemo<ModelChoice[]>(
@@ -187,17 +188,23 @@ export function SideChatModelSelect({
           ...(effort.description === undefined ? {} : { description: effort.description }),
         })),
       ], [messages.providerDefault, reasoning])
-  const modelLabel = currentChoice?.model.name ?? messages.selectModel
+  const modelLabel = currentChoice?.model.name ?? current?.model ?? messages.selectModel
   const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
 
   const reload = (): void => {
     void directory.load().catch(() => undefined)
   }
 
-  useEffect(() => { reload() }, [directory])
+  useEffect(() => {
+    initialized.current = false
+    reload()
+    return () => { ++operation.current }
+  }, [directory])
+
+  useEffect(() => { if (locked) setOpen(false) }, [locked])
 
   useEffect(() => {
-    if (initialized.current) return
+    if (initialized.current || locked) return
     if (selection !== undefined && !validateInitialSelection) {
       initialized.current = true
       return
@@ -215,11 +222,11 @@ export function SideChatModelSelect({
       onInitialize(directoryCurrent, { remember: false })
       return
     }
-    if (state.status !== 'ready') return
+    if (state.status !== 'ready' || state.error !== null || state.failures.length > 0) return
     initialized.current = true
     const repaired = repairSelection(selection, choices, directoryCurrent)
     if (!sameSelection(selection, repaired)) onInitialize(repaired, { remember: true })
-  }, [choices, onInitialize, selection, state.current, state.status, validateInitialSelection])
+  }, [choices, locked, onInitialize, selection, state.current, state.status, state.error, state.failures, validateInitialSelection])
 
   useEffect(() => {
     if (!open) return
@@ -249,6 +256,7 @@ export function SideChatModelSelect({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Escape' && open) {
       event.preventDefault()
+      event.stopPropagation()
       if (pane !== 'root') setPane('root')
       else close(true)
       return
@@ -262,20 +270,25 @@ export function SideChatModelSelect({
     close()
   }
   const submitSelection = async (next: SideChatModelSelection): Promise<void> => {
+    if (locked || selectionPending.current) return
     const generation = ++operation.current
+    selectionPending.current = true
     setSelecting(true)
-    const result = await onSelect(next)
-    if (generation !== operation.current) return
-    setSelecting(false)
-    if (!result.ok) {
-      toastSequence.current += 1
+    try {
+      const result = await onSelect(next)
+      if (generation !== operation.current) return
+      if (!result.ok) throw new Error(result.error.message)
+      close(true)
+    } catch (error) {
+      if (generation !== operation.current) return
       setToast({
-        seq: toastSequence.current,
-        text: messages.operationFailed(result.error.message),
+        seq: ++toastSequence.current,
+        text: messages.operationFailed(error instanceof Error ? error.message : 'Could not select the model.'),
       })
-      return
+    } finally {
+      selectionPending.current = false
+      if (generation === operation.current) setSelecting(false)
     }
-    close(true)
   }
   const chooseModel = (group: ModelProviderGroup, model: ModelCatalogModel): void => {
     if (sameModel(current, group.id, model.id)) {
@@ -419,7 +432,7 @@ export function SideChatModelSelect({
                             aria-checked={selected}
                             className={`dsh-side-chat-model-option${selected ? ' dsh-side-chat-model-selected' : ''}`}
                             title={model.name}
-                            disabled={selecting}
+                            disabled={locked || selecting}
                             onClick={() => { chooseModel(group, model) }}
                           >
                             <span className="dsh-side-chat-model-option-copy">
@@ -457,7 +470,7 @@ export function SideChatModelSelect({
                       role="menuitemradio"
                       aria-checked={selected}
                       className={`dsh-side-chat-model-option${selected ? ' dsh-side-chat-model-selected' : ''}`}
-                      disabled={selecting}
+                      disabled={locked || selecting}
                       onClick={() => { chooseEffort(level.effort) }}
                     >
                       <span className="dsh-side-chat-model-option-copy">
