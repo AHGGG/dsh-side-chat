@@ -1,6 +1,6 @@
 # dsh-side-chat
 
-Ask a focused follow-up about selected text without leaving your current DeepSeek Harness conversation.
+Ask a focused follow-up about selected text without leaving your current conversation in **DeepSeek Harness Desktop or Web**.
 
 [简体中文](README.zh-CN.md)
 
@@ -8,12 +8,28 @@ Ask a focused follow-up about selected text without leaving your current DeepSee
 
 ## Install
 
-Install DSH 0.2.0-rc.1 if it is not already available. This release is on npm's `next` tag, not `latest`. Refresh only this package's registry metadata before adding it, so pnpm cannot reuse an older `latest` value immediately after a release:
+Use these exact versions together:
+
+- **Side Chat:** `@ahggg/dsh-side-chat@1.0.0`
+- **DeepSeek Harness runtime:** `0.2.0-rc.1`
+
+### DeepSeek Harness Desktop
+
+Side Chat supports the Desktop app. In its plugin installation dialog, enter the complete package spec:
+
+```text
+@ahggg/dsh-side-chat@1.0.0
+```
+
+Install it, then restart DeepSeek Harness Desktop. Use the Desktop app's plugin manager for Desktop installations; the CLI commands below target the Web profile.
+
+### Web (`dsh web`)
+
+Install the matching DSH CLI if needed, then install the pinned plugin version:
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.2.0-rc.1
-pnpm cache delete "@ahggg/dsh-side-chat"
-dsh plugin --profile web add @ahggg/dsh-side-chat@latest
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
 ```
 
 Start DSH from the project you want the agent to work in:
@@ -48,12 +64,12 @@ On phones and tablets, long-press text in a completed message to select it. The 
 Useful details:
 
 - `Shift+Enter` inserts a newline.
-- Use the model control beside Send to choose a provider/model and its available reasoning effort. The choice belongs to Side Chat, does not change the main conversation, and becomes the global default for the next Side Chat.
+- Use the model control beside Send, then **Effort**, to choose the model's thinking level. You can change it while a reply runs: that reply keeps its original settings, while the accepted choice applies to the next reply and is remembered for future **Ask in side chat** and **More details** requests in this client. It does not change the main conversation.
 - After clicking `Add to chat`, press `Enter` or click `Save` to keep the annotation. Click outside the comment box or click `Cancel` to discard it.
 - `Add to chat` keeps any existing draft text and can collect multiple numbered passages, each with its own optional comment, in one annotation capsule.
 - `Add to conversation` captures the Side Chat's user/assistant history, preserves the main draft, and refreshes the existing reference instead of duplicating it when clicked again.
 - The input grows with its content and becomes scrollable at its maximum height.
-- While a reply is running, use Stop to interrupt it; send a follow-up after it finishes or stops. Text entered while a send is pending stays in the composer.
+- The composer has one action button: **Send** when idle, **Stop** while generating. It returns to Send after the reply finishes or stops, keeping any follow-up draft. Text entered while a send is pending stays in the composer.
 - Assistant replies use DSH's native Markdown rendering.
 - Hover over `N annotations` to preview every selected passage and its comment.
 - Before sending, hover over the annotation capsule and click `×` to remove it; after sending, the same capsule appears above the user message.
@@ -80,14 +96,27 @@ The text snapshot and Side Chat history are sent to the model on each request, s
 
 ## Upgrade or remove
 
-Refresh this package's registry metadata, update to the latest stable version, and restart DSH:
+### Desktop
 
-```powershell
-pnpm cache delete "@ahggg/dsh-side-chat"
-dsh plugin --profile web update @ahggg/dsh-side-chat --latest
+In the Desktop app's plugin manager, update or reinstall using this exact package spec, then restart the app:
+
+```text
+@ahggg/dsh-side-chat@1.0.0
 ```
 
-Remove the plugin with:
+If Desktop still reports `@ahggg/dsh-side-chat@0.7.3`, it is loading the old plugin, which does not support DSH `0.2.0-rc.1`. A working `dsh web` installation does not mean Desktop has been updated. Update the Desktop installation rather than bypassing DSH's compatibility check.
+
+To uninstall, remove Side Chat through the Desktop app's plugin manager.
+
+### Web
+
+To upgrade an existing Web installation to `1.0.0`, re-add the exact version. `add --save-exact` replaces the installed package version and keeps the dependency pinned:
+
+```powershell
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
+```
+
+Restart `dsh web` and reload the browser after updating. Remove the Web-profile plugin with:
 
 ```powershell
 dsh plugin --profile web remove @ahggg/dsh-side-chat

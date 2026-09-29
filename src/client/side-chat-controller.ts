@@ -75,7 +75,7 @@ export class SideChatController {
   }
   async selectModel(model: SideChatModelSelection): Promise<SideChatActionResult<SideChatModelSelection>> {
     const state = this.getSnapshot()
-    if (this.cancelling || !['draft', 'error', 'ready'].includes(state.phase) || state.error?.operation === 'close') return failure(localError('Stop the reply before changing models.'))
+    if (this.cancelling || !['draft', 'error', 'ready', 'running'].includes(state.phase) || state.error?.operation === 'close') return failure(localError('The model cannot be changed while Side Chat is opening, stopping, or closing.'))
     if (state.chatId === undefined) {
       const result = this.initializeModel(model)
       if (result.ok) this.sessions.rememberSideChatModelPreference(result.value)
@@ -85,7 +85,7 @@ export class SideChatController {
     const version = ++this.modelGeneration
     const result = await this.invoke(() => this.remote.selectModel({ chatId: state.chatId!, ...model }))
     if (!result.ok) return result
-    if (generation === this.generation && version === this.modelGeneration && this.getSnapshot().phase !== 'running') {
+    if (generation === this.generation && version === this.modelGeneration) {
       this.observable.publish({ ...this.getSnapshot(), modelSelection: result.value.selected })
       this.sessions.rememberSideChatModelPreference(result.value.selected)
     }
@@ -117,6 +117,7 @@ export class SideChatController {
       if (!result.ok) return this.fail(result.error, 'create')
       this.observable.publish({ ...this.getSnapshot(), phase: 'ready', chatId: result.value.chatId,
         boundarySeq: result.value.boundarySeq, modelSelection: result.value.modelSelection, error: undefined })
+      this.sessions.rememberSideChatModelPreference(result.value.modelSelection)
     }
     return await this.send(text)
   }
@@ -195,13 +196,14 @@ export class SideChatController {
           if (admitted || event.requestId !== active.request.requestId) throw new Error('Invalid Side Chat admission response.')
           admitted = true
           this.pendingRequest = undefined
-          this.observable.publish({ ...state, phase: 'running', draft: '', modelSelection: event.modelSelection,
+          // Admission describes this turn, not the model/effort chosen for the
+          // next turn. A delayed admission or cached replay must not undo it.
+          this.observable.publish({ ...state, phase: 'running', draft: '',
             messages: [...state.messages,
               { id: `${active.request.requestId}:user`, role: 'user', text: active.request.text, status: 'complete',
                 selectedText: state.messages.length === 0 ? state.selection?.text : undefined },
               { id: assistantId, role: 'assistant', text: '', reasoning: '', status: 'streaming' },
             ], error: undefined })
-          this.sessions.rememberSideChatModelPreference(event.modelSelection)
           resolve(success(undefined))
         } else if (event.type === 'content') {
           if (!admitted) throw new Error('Side Chat content arrived before admission.')

@@ -130,6 +130,20 @@ describe('Side Chat theme styles', () => {
     expect(sideChatCss).not.toContain('--dsw-alias-button-info,')
   })
 
+  it('gives model and thinking-level menus opaque surfaces in both supported palettes', () => {
+    for (const selector of ['dsh-side-chat-model-menu', 'dsh-side-chat-model-group-title']) {
+      const block = new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`).exec(sideChatCss)?.[1]
+      expect(block).toContain('background: var(--side-chat-bg);')
+      expect(block).not.toContain('--dsw-specific-menu')
+    }
+    // The menu and its sticky provider headings share this solid theme layer,
+    // rather than DSH's alpha-tinted menu fill that exposes underlying text.
+    for (const dark of [false, true]) {
+      expect(resolveThemeValue('--dsw-alias-bg-layer-2', themeValues(dark)))
+        .toMatch(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i)
+    }
+  })
+
   it('keeps touch selection actions slightly more compact than the initial mobile treatment', () => {
     expect(sideChatCss).toMatch(/\.dsh-side-chat-selection-actions\[data-touch\] button\s*\{[^}]*min-height:\s*42px;[^}]*padding-inline:\s*14px;[^}]*white-space:\s*nowrap;/s)
   })

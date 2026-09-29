@@ -61,6 +61,8 @@ export class FakeRemote implements SideChatRemote {
   readonly cancelCalls: Parameters<SideChatRemote['cancel']>[0][] = []
   readonly closeCalls: Parameters<SideChatRemote['close']>[0][] = []
   readonly streams: ManualStream[] = []
+  readonly streamModels: SideChatModelSelection[] = []
+  private readonly models = new Map<SideChatId, SideChatModelSelection>()
   createDeferred: ReturnType<typeof deferred<CreateResult>> | undefined
   createResult: CreateResult | undefined
   closeResults: SideChatResult<{ closed: true }>[] = []
@@ -68,20 +70,27 @@ export class FakeRemote implements SideChatRemote {
   autoFinish = false
   async create(request: Parameters<SideChatRemote['create']>[0]): Promise<CreateResult> {
     this.createCalls.push(request)
-    if (this.createDeferred !== undefined) return await this.createDeferred.promise
-    return this.createResult ?? { ok: true, value: { parentSessionId: request.parentSessionId,
-      chatId: SideChatId(`side-chat-${this.createCalls.length}`), boundarySeq: 7,
-      modelSelection: request.modelSelection ?? MODEL } }
+    const result: CreateResult = this.createDeferred === undefined
+      ? this.createResult ?? { ok: true, value: { parentSessionId: request.parentSessionId,
+          chatId: SideChatId(`side-chat-${this.createCalls.length}`), boundarySeq: 7,
+          modelSelection: request.modelSelection ?? MODEL } }
+      : await this.createDeferred.promise
+    if (result.ok) this.models.set(result.value.chatId, { ...result.value.modelSelection })
+    return result
   }
   async selectModel(request: Parameters<SideChatRemote['selectModel']>[0]) {
     this.selectModelCalls.push(request)
-    return { ok: true as const, value: { selected: { provider: request.provider, model: request.model, reasoningEffort: request.reasoningEffort } } }
+    const selected = { provider: request.provider, model: request.model, reasoningEffort: request.reasoningEffort }
+    this.models.set(request.chatId, selected)
+    return { ok: true as const, value: { selected } }
   }
   stream(request: Parameters<SideChatRemote['stream']>[0]): ManualStream {
     this.streamCalls.push(request)
     const stream = new ManualStream()
     this.streams.push(stream)
-    if (this.autoStart) stream.push({ type: 'started', requestId: request.requestId, modelSelection: MODEL })
+    const model = { ...(this.models.get(request.chatId) ?? MODEL) }
+    this.streamModels.push(model)
+    if (this.autoStart) stream.push({ type: 'started', requestId: request.requestId, modelSelection: model })
     if (this.autoFinish) { stream.push({ type: 'content', text: 'Because this is the result.', reasoning: '' }); stream.finish() }
     return stream
   }

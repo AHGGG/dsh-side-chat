@@ -2,6 +2,8 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render as renderReact, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ModelDirectory, ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import { SideChatModelPreferences } from '../../src/client/model-preference.js'
 import type { SideChatClientSessions } from '../../src/client/contracts.js'
 import {
   addSelectionToConversation,
@@ -13,7 +15,7 @@ import { SideChatOverlay as Rc6SideChatOverlay } from '../../src/client/dsh/Side
 import { lexicalComposerReferenceFixture } from './composer-reference-fixture.js'
 import type { DshSideChatSessions as Rc6SideChatSessions } from '../../src/client/dsh/sessions-adapter.js'
 import { SideChatController } from '../../src/client/side-chat-controller.js'
-import type { ConversationSelection, SideChatRemote } from '../../src/shared/contracts.js'
+import type { ConversationSelection, SideChatModelSelection, SideChatRemote } from '../../src/shared/contracts.js'
 import { SessionId, SideChatId } from '../../src/shared/contracts.js'
 import { FakeClientSessions, FakeRemote } from '../fixtures/client-runtime.js'
 
@@ -404,6 +406,67 @@ describe('Side Chat overlay selection lifecycle', () => {
     expect(screen.getByRole('textbox')).toHaveValue('')
     expect(sessions.opened).toEqual([])
     await act(async () => { await controller.dispose() })
+  })
+
+  it.each(['Ask in side chat', 'More details'])('keeps thinking-level choices available during %s and remembers them for More details', async action => {
+    captureMocks.capture.mockResolvedValue(selectedPassage)
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+    let saved: string | null = null
+    const storage = { getItem: () => saved, setItem: (_key: string, value: string) => { saved = value } }
+    const preferences = new SideChatModelPreferences(storage)
+    const modelState: ModelDirectoryState = {
+      status: 'ready', current: { provider: 'test', model: 'test-model', reasoningEffort: 'low' },
+      routable: true, pending: null, error: null, failures: [], groups: [{
+        id: 'test', name: 'Test', models: [{
+          id: 'test-model', name: 'Test Model', reasoning: { defaultEffort: 'low', efforts: [
+            { id: 'low', name: 'Low' }, { id: 'high', name: 'High' },
+          ] },
+        }],
+      }],
+    }
+    const directory = {
+      store: { getSnapshot: () => modelState, subscribe: () => () => {} }, load: async () => modelState,
+    } as unknown as ModelDirectory
+    const remote = new FakeRemote()
+    const sessions = Object.assign(new FakeClientSessions(), EMPTY_CONVERSATION_INPUT, {
+      subscribeList: () => () => {}, face: () => ({ getSnapshot: () => ({}) }),
+      nextConversationAnnotationNumber: () => 1, title: () => 'Main', modelDirectory: () => directory,
+      sideChatModelPreference: () => preferences.get(),
+      rememberSideChatModelPreference: (choice: SideChatModelSelection) => { preferences.set(choice) },
+    })
+    const controller = new SideChatController(remote, sessions)
+    render(<><div data-chat-flow /><Rc6SideChatOverlay controller={controller}
+      sessions={sessions as unknown as Rc6SideChatSessions} /></>)
+    try {
+      fireEvent.mouseUp(document.body)
+      fireEvent.click(await screen.findByRole('button', { name: action }))
+      if (action === 'Ask in side chat') {
+        expect(screen.getByRole('button', { name: /Select model/ })).not.toBeDisabled()
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Why this part?' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      }
+      await waitFor(() => expect(controller.getSnapshot().phase).toBe('running'))
+      const firstModel = remote.streamModels[0]
+      const trigger = screen.getByRole('button', { name: /Select model/ })
+      expect(trigger).not.toBeDisabled()
+      fireEvent.click(trigger)
+      fireEvent.click(screen.getByRole('menuitem', { name: /Effort/ }))
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /High/ }))
+      await waitFor(() => expect(controller.getSnapshot().modelSelection?.reasoningEffort).toBe('high'))
+      const chosen = { provider: 'test', model: 'test-model', reasoningEffort: 'high' }
+      expect(new SideChatModelPreferences(storage).get()).toEqual(chosen)
+      expect(remote.streamModels[0]).toEqual(firstModel)
+      expect(remote.cancelCalls).toHaveLength(0)
+      fireEvent.click(screen.getByRole('button', { name: 'Close Side Chat' }))
+      await waitFor(() => expect(controller.getSnapshot().phase).toBe('closed'))
+
+      fireEvent.mouseUp(document.body)
+      fireEvent.click(await screen.findByRole('button', { name: 'More details' }))
+      await waitFor(() => expect(controller.getSnapshot().phase).toBe('running'))
+      expect(remote.createCalls[1]?.modelSelection).toEqual(chosen)
+      expect(remote.streamModels[1]).toEqual(chosen)
+      expect(screen.getByRole('button', { name: /Select model/ })).toHaveTextContent('High')
+    } finally { await act(async () => { await controller.dispose() }) }
   })
 
   it('keeps an added annotation marker interactive and edits its comment in place', async () => {

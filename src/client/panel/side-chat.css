@@ -413,7 +413,8 @@
   padding: 4px;
   border: 1px solid var(--dsw-alias-border-inverted, var(--side-chat-border));
   border-radius: 12px;
-  background: var(--dsw-specific-menu, var(--side-chat-bg));
+  /* DSH's menu tint is translucent; keep transcript text out of this surface. */
+  background: var(--side-chat-bg);
   box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgb(0 0 0 / 16%));
   color: var(--dsw-alias-label-primary, inherit);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2, #a1a1aa);
@@ -465,7 +466,7 @@
   z-index: 1;
   top: 0;
   padding: 5px 8px 3px;
-  background: var(--dsw-specific-menu, var(--side-chat-bg));
+  background: var(--side-chat-bg);
   color: var(--dsw-alias-label-tertiary, var(--side-chat-muted));
   font-size: 12px;
   font-weight: 500;

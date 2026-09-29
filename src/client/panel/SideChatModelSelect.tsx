@@ -30,6 +30,7 @@ interface ModelMessages {
   readonly reload: string
   readonly emptyModels: string
   readonly emptyEfforts: string
+  readonly nextReply: string
   readonly aria: (model: string, effort?: string) => string
   readonly operationFailed: (message: string) => string
   readonly groupFailed: (name: string, message: string) => string
@@ -46,6 +47,7 @@ const MODEL_MESSAGES: Readonly<Record<'en' | 'zh-CN', ModelMessages>> = {
     reload: 'Reload',
     emptyModels: 'No models available.',
     emptyEfforts: 'This model provides no reasoning effort levels.',
+    nextReply: 'Changes apply to the next reply and future Side Chats.',
     aria: (model, effort) => effort === undefined
       ? `Select model, current ${model}`
       : `Select model, current ${model}, reasoning effort ${effort}`,
@@ -62,6 +64,7 @@ const MODEL_MESSAGES: Readonly<Record<'en' | 'zh-CN', ModelMessages>> = {
     reload: '重新加载',
     emptyModels: '没有可用的模型。',
     emptyEfforts: '当前模型未提供推理等级。',
+    nextReply: '修改将用于下一次回复及之后新开的侧边对话。',
     aria: (model, effort) => effort === undefined
       ? `选择模型，当前 ${model}`
       : `选择模型，当前 ${model}，推理等级 ${effort}`,
@@ -88,6 +91,7 @@ export interface SideChatModelSelectProps {
   readonly directory: ModelDirectory
   readonly selection?: SideChatModelSelection | undefined
   readonly locked: boolean
+  readonly running?: boolean
   readonly validateInitialSelection?: boolean
   readonly locale?: 'en' | 'zh-CN'
   readonly onInitialize: (
@@ -138,6 +142,7 @@ export function SideChatModelSelect({
   directory,
   selection,
   locked,
+  running = false,
   validateInitialSelection = true,
   locale = 'en',
   onInitialize,
@@ -305,10 +310,8 @@ export function SideChatModelSelect({
   }
   const chooseEffort = (effort: string | undefined): void => {
     if (current === undefined) return
-    if (effectiveEffort === effort) {
-      close(true)
-      return
-    }
+    // Choosing the displayed default is still an explicit preference: persist
+    // it for future Side Chats instead of merely dismissing the menu.
     void submitSelection({
       provider: current.provider,
       model: current.model,
@@ -360,6 +363,7 @@ export function SideChatModelSelect({
           aria-label={messages.menu}
           aria-busy={state.status === 'loading' || selecting}
         >
+          {running && <div className="dsh-side-chat-model-status">{messages.nextReply}</div>}
           {pane === 'root' && (
             <>
               <button
