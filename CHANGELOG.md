@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/AHGGG/dsh-side-chat/compare/v1.0.0...v1.0.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* restore Side Chat reasoning selection and composer controls ([6dba3f5](https://github.com/AHGGG/dsh-side-chat/commit/6dba3f5c2bfcaee2e63c0a9a3feca249ddc9d7a0))
+* restore Side Chat thinking-level and composer controls ([4c5ac3f](https://github.com/AHGGG/dsh-side-chat/commit/4c5ac3f2672b8fef873424d8429e5e197e5854ba))
+
 ## [1.0.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.3...v1.0.0) (2026-09-29)
 
 
