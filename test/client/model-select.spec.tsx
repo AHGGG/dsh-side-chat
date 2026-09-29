@@ -36,18 +36,19 @@ const catalog = {
   pending: null,
 } satisfies Omit<ModelDirectoryState, 'error' | 'status'>
 
-function modelDirectory(): ModelDirectory {
-  const state = {
-    status: 'ready' as const,
+function modelDirectory(overrides: Partial<ModelDirectoryState> = {}): ModelDirectory {
+  const state: ModelDirectoryState = {
+    status: 'ready',
     ...catalog,
     error: null,
+    ...overrides,
   }
   return {
     store: {
       getSnapshot: () => state,
       subscribe: () => () => {},
     },
-    load: vi.fn(async () => catalog),
+    load: vi.fn(async () => state),
   } as unknown as ModelDirectory
 }
 
@@ -123,11 +124,12 @@ describe('SideChatModelSelect', () => {
   })
 
   it('does not overwrite a remembered model after a partial catalog failure', () => {
-    const directory = modelDirectory()
-    const state = { ...directory.store.getSnapshot(), failures: [{ id: 'offline', name: 'Offline', message: 'Unavailable' }] }
+    const directory = modelDirectory({
+      failures: [{ id: 'offline', name: 'Offline', message: 'Unavailable' }],
+    })
     const onInitialize = vi.fn()
     render(<SideChatModelSelect
-      directory={{ ...directory, store: { ...directory.store, getSnapshot: () => state } } as ModelDirectory}
+      directory={directory}
       selection={{ provider: 'offline', model: 'saved-model' }} locked={false}
       onInitialize={onInitialize} onSelect={vi.fn()}
     />)
