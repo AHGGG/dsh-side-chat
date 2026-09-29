@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.3...v1.0.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace Side Chat session forks with read-only streaming
+
+### Code Refactoring
+
+* replace Side Chat session forks with read-only streaming ([d8a8805](https://github.com/AHGGG/dsh-side-chat/commit/d8a88053b3a49b91d78e693ff34c4e91d026d652))
+
 ## [0.7.3](https://github.com/AHGGG/dsh-side-chat/compare/v0.7.2...v0.7.3) (2026-09-08)
 
 
