@@ -138,6 +138,59 @@ describe('session-free read-only Side Chat', () => {
     expect((await collect(f.service.stream({ chatId: chat.chatId, requestId: 'two', text: 'Later' }, 'browser', signal()))).at(-1))
       .toEqual({ type: 'finished', status: 'complete' })
   })
+  it('changes thinking level for later turns without interrupting or reconfiguring the active reply', async () => {
+    const f = fixture(), chat = await f.create(), started = deferred<void>(), finish = deferred<void>()
+    const low = { ...MODEL, reasoningEffort: 'low' }
+    const high = { ...MODEL, reasoningEffort: 'high' }
+    expect((await f.service.selectModel({ chatId: chat.chatId, ...low }, 'browser', signal())).ok).toBe(true)
+    f.setProvider(async function* (request) {
+      yield { type: 'text-delta', index: 0, text: 'Partial' }
+      started.resolve()
+      await Promise.race([
+        finish.promise,
+        new Promise<void>(resolve => request.signal!.addEventListener('abort', () => resolve(), { once: true })),
+      ])
+      request.signal!.throwIfAborted()
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    })
+    const output = collect(f.service.stream({ chatId: chat.chatId, requestId: 'one', text: 'Question' }, 'browser', signal()))
+    await started.promise
+    try {
+      expect(await f.service.selectModel({ chatId: chat.chatId, ...high }, 'browser', signal()))
+        .toEqual({ ok: true, value: { selected: high } })
+      expect(f.stream.mock.calls[0]![0].reasoningEffort).toBe('low')
+      expect(f.stream.mock.calls[0]![0].signal?.aborted).toBe(false)
+    } finally { finish.resolve() }
+    const first = await output
+    expect(first[0]).toMatchObject({ type: 'started', modelSelection: low })
+    expect(first.at(-1)).toEqual({ type: 'finished', status: 'complete' })
+    f.setProvider(async function* () { yield { type: 'finish', reason: { kind: 'stop' } } })
+    const next = await collect(f.service.stream({ chatId: chat.chatId, requestId: 'two', text: 'Follow-up' }, 'browser', signal()))
+    expect(next[0]).toMatchObject({ type: 'started', modelSelection: high })
+    expect(f.stream.mock.calls[1]![0].reasoningEffort).toBe('high')
+    expect(f.createAgent).not.toHaveBeenCalled()
+  })
+  it('does not let an older delayed model resolution undo the latest accepted choice', async () => {
+    const f = fixture(), chat = await f.create()
+    const delayed = deferred<Awaited<ReturnType<typeof f.prepare>>>()
+    f.prepare.mockImplementationOnce(() => delayed.promise)
+    const older = f.service.selectModel({ chatId: chat.chatId, ...MODEL, reasoningEffort: 'low' }, 'browser', signal())
+    expect((await f.service.selectModel({ chatId: chat.chatId, ...MODEL, reasoningEffort: 'high' }, 'browser', signal())).ok).toBe(true)
+    delayed.resolve({ config: { ...MODEL, reasoningEffort: 'low' }, stream: f.stream })
+    expect(await older).toMatchObject({ ok: false, error: { code: 'side_chat_model_failed' } })
+    const result = await collect(f.service.stream({ chatId: chat.chatId, requestId: 'one', text: 'Question' }, 'browser', signal()))
+    expect(result[0]).toMatchObject({ type: 'started', modelSelection: { ...MODEL, reasoningEffort: 'high' } })
+    expect(f.stream.mock.calls[0]![0].reasoningEffort).toBe('high')
+  })
+  it('keeps the accepted reasoning level when the provider rejects a new choice', async () => {
+    const f = fixture(), chat = await f.create()
+    await f.service.selectModel({ chatId: chat.chatId, ...MODEL, reasoningEffort: 'low' }, 'browser', signal())
+    f.prepare.mockRejectedValueOnce(new Error('Unsupported effort'))
+    expect(await f.service.selectModel({ chatId: chat.chatId, ...MODEL, reasoningEffort: 'invalid' }, 'browser', signal()))
+      .toMatchObject({ ok: false, error: { code: 'side_chat_model_failed' } })
+    await collect(f.service.stream({ chatId: chat.chatId, requestId: 'one', text: 'Question' }, 'browser', signal()))
+    expect(f.stream.mock.calls[0]![0].reasoningEffort).toBe('low')
+  })
   it('isolates browser ownership and deletes only that peer’s discussions on disconnect', async () => {
     const f = fixture(), chat = await f.create()
     const denied = await collect(f.service.stream({ chatId: chat.chatId, requestId: 'one', text: 'Peek' }, 'another-peer', signal()))

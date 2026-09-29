@@ -1,6 +1,6 @@
 # dsh-side-chat
 
-在不离开当前 DeepSeek Harness 主会话的情况下，针对选中的文本发起一个独立的侧边对话。
+在不离开当前 DeepSeek Harness 主会话的情况下，针对选中的文本发起聚焦讨论。支持 **DeepSeek Harness 桌面端和 Web 端**。
 
 [English](README.md)
 
@@ -8,12 +8,28 @@
 
 ## 安装
 
-如果尚未安装 DSH 0.2.0-rc.1，先安装它。该版本对应 npm 的 `next` 标签，而非 `latest`。添加插件前只刷新这个包的 registry metadata，避免刚发布新版本时 pnpm 仍复用旧的 `latest`：
+请配合使用以下确切版本：
+
+- **Side Chat：** `@ahggg/dsh-side-chat@1.0.0`
+- **DeepSeek Harness 运行时：** `0.2.0-rc.1`
+
+### DeepSeek Harness 桌面端
+
+Side Chat 现已支持桌面应用。在桌面端的插件安装对话框中，输入完整的包名和版本：
+
+```text
+@ahggg/dsh-side-chat@1.0.0
+```
+
+安装后重启 DeepSeek Harness 桌面应用。桌面端请使用应用内的插件管理功能；下方 CLI 命令仅针对 Web profile。
+
+### Web 端（`dsh web`）
+
+如有需要，先安装匹配版本的 DSH CLI，再安装并固定插件版本：
 
 ```powershell
 npm install --global @deepseek-ai/dsh@0.2.0-rc.1
-pnpm cache delete "@ahggg/dsh-side-chat"
-dsh plugin --profile web add @ahggg/dsh-side-chat@latest
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
 ```
 
 从希望 Agent 操作的真实工程目录启动 DSH：
@@ -48,12 +64,12 @@ pnpm build
 常用操作：
 
 - `Shift+Enter` 换行。
-- 使用发送按钮旁的模型控件可以选择 provider/model 及其可用的推理等级；该选择只属于 Side Chat，不会修改主会话，并会成为下次打开 Side Chat 时使用的全局默认值。
+- 点击发送按钮旁的模型控件，再选择 **Effort（推理等级）**，即可调整模型的思考等级。回复生成期间也可以修改：当前回复仍使用原设置，新选择会用于下一次回复，并记住为当前客户端之后 **Ask in side chat** 和 **More details** 请求的默认设置，不会修改主会话。
 - 点击 `Add to chat` 后，按 `Enter` 或点击 `Save` 保存 annotation；点击批注框外部或点击 `Cancel` 则直接取消。
 - `Add to chat` 会保留输入框中已有的草稿，并可把多段带序号的文本及各自的可选批注汇总到同一个 annotation 胶囊中。
 - `Add to conversation` 会捕获 Side Chat 中的用户/助手历史、保留主会话草稿；再次点击时会刷新已有引用，而不是重复添加。
 - 输入框会随内容自动增高，达到最大高度后在内部滚动。
-- 回复生成期间，可使用 Stop 中断；等回复结束或停止后再发送追问。等待发送结果时新输入的文字会保留在输入框中。
+- 输入框只保留一个操作按钮：空闲时为 **Send（发送）**，生成期间切换为 **Stop（停止）**。回复结束或停止后恢复为发送按钮，并保留追问草稿。等待发送结果时新输入的文字也会保留。
 - Assistant 回复使用 DSH 原生 Markdown 渲染。
 - hover `N annotations` 可以预览每一段所选文本及对应批注。
 - 发送前可以 hover annotation 胶囊并点击 `×` 移除；发送后，同一个胶囊会显示在用户消息上方。
@@ -80,14 +96,27 @@ Side Chat 只在内存中保留独立的临时讨论历史，**不会 fork、复
 
 ## 升级或卸载
 
-刷新这个包的 registry metadata，升级到最新稳定版，然后重启 DSH：
+### 桌面端
 
-```powershell
-pnpm cache delete "@ahggg/dsh-side-chat"
-dsh plugin --profile web update @ahggg/dsh-side-chat --latest
+在桌面应用的插件管理功能中，使用以下确切包版本进行更新或重新安装，然后重启应用：
+
+```text
+@ahggg/dsh-side-chat@1.0.0
 ```
 
-卸载插件：
+如果桌面端仍提示 `@ahggg/dsh-side-chat@0.7.3`，说明它还在加载旧插件，该版本不支持 DSH `0.2.0-rc.1`。`dsh web` 可以正常使用，并不代表桌面端也已更新。请更新桌面端的插件安装，不要绕过 DSH 的兼容性检查。
+
+卸载时，在桌面应用的插件管理功能中移除 Side Chat 即可。
+
+### Web 端
+
+要将已有的 Web 安装升级到 `1.0.0`，请重新添加这个确切版本。`add --save-exact` 会替换已安装的包版本，并将依赖固定到该版本：
+
+```powershell
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.0 --save-exact
+```
+
+更新后重启 `dsh web` 并刷新浏览器。卸载 Web profile 中的插件：
 
 ```powershell
 dsh plugin --profile web remove @ahggg/dsh-side-chat

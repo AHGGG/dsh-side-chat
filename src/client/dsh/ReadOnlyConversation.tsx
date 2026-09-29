@@ -58,6 +58,7 @@ export function ReadOnlyConversation({ state, controller, modelControl, locale =
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useAutoGrowingTextarea(draft)
   const running = state.phase === 'running'
+  const showStop = running || stopping
   const interactive = ['ready', 'running'].includes(state.phase)
   useEffect(() => {
     const element = scrollRef.current
@@ -106,10 +107,19 @@ export function ReadOnlyConversation({ state, controller, modelControl, locale =
         }} />
       <div className="dsh-side-chat-composer-actions">
         {modelControl}
-        {running && <button type="button" className="dsh-side-chat-stop-button" aria-label="Stop generating"
-          disabled={!interactive || stopping} onClick={() => { void stop() }}><StopIcon /></button>}
-        <button type="submit" className="dsh-side-chat-send-button" aria-label="Send"
-          disabled={!interactive || running || sending || stopping || draft.trim().length === 0}><SendIcon /></button>
+        <button type={showStop ? 'button' : 'submit'}
+          className={showStop ? 'dsh-side-chat-stop-button' : 'dsh-side-chat-send-button'}
+          aria-label={showStop ? 'Stop generating' : 'Send'} aria-busy={stopping || sending || undefined}
+          disabled={!interactive || (showStop ? stopping : sending || draft.trim().length === 0)}
+          onClick={event => {
+            if (!showStop) return
+            // Do not submit a retained draft if cancellation changes the button
+            // back to Send before this click's default action completes.
+            event.preventDefault()
+            void stop()
+          }}>
+          {showStop ? <StopIcon /> : <SendIcon />}
+        </button>
       </div>
     </form>
   </div>

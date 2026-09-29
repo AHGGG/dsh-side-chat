@@ -304,7 +304,8 @@ export function SideChatOverlay({
           key={`${state.parentSessionId}:${state.chatId ?? 'draft'}`}
           directory={modelDirectory}
           selection={state.modelSelection}
-          locked={['creating', 'running', 'closing'].includes(state.phase) || state.error?.operation === 'close'}
+          locked={['creating', 'closing'].includes(state.phase) || state.error?.operation === 'close'}
+          running={state.phase === 'running'}
           validateInitialSelection={state.chatId === undefined}
           locale={locale}
           onInitialize={(selection, options) => {

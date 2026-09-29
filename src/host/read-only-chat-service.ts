@@ -30,6 +30,7 @@ interface Chat {
   readonly history: RequestMessage[]
   readonly turns: Map<string, Turn>
   model: SideChatModelSelection
+  modelRevision: number
   touched: number
   active?: { abort: AbortController; done: Promise<void> }
 }
@@ -122,7 +123,7 @@ export class ReadOnlySideChatService {
         return failure(error('side_chat_already_open', 'Close an existing Side Chat before opening another.'))
       }
       const id = SideChatId(`side-chat-${randomUUID()}`)
-      this.chats.set(id, { id, owner, context, history: [], turns: new Map(), model, touched: Date.now() })
+      this.chats.set(id, { id, owner, context, history: [], turns: new Map(), model, modelRevision: 0, touched: Date.now() })
       return { ok: true, value: { parentSessionId: request.parentSessionId, chatId: id, boundarySeq: boundary, modelSelection: model } }
     } catch (cause) {
       return failure(error('context_unavailable', `Could not read the parent context: ${messageOf(cause)}`, true))
@@ -132,12 +133,14 @@ export class ReadOnlySideChatService {
   async selectModel(request: SelectSideChatModelRequest, owner: string, signal: AbortSignal): Promise<SideChatResult<SelectSideChatModelValue>> {
     const chat = this.owned(request.chatId, owner)
     if (chat === undefined) return failure(this.missing())
-    if (chat.active !== undefined) return failure(error('side_chat_model_failed', 'Stop the current reply before changing models.', true))
+    const revision = ++chat.modelRevision
     try {
       const model = await this.resolveModel(request, signal)
       signal.throwIfAborted()
       if (this.owned(chat.id, owner) !== chat) return failure(this.missing())
-      if (chat.active !== undefined) return failure(error('side_chat_model_failed', 'A reply started while selecting the model.', true))
+      if (revision !== chat.modelRevision) return failure(error('side_chat_model_failed', 'A newer model choice replaced this change.'))
+      // Each admitted turn owns its model snapshot. Updating the default here
+      // changes only later turns, even while the current provider is streaming.
       chat.model = model
       return { ok: true, value: { selected: model } }
     } catch (cause) { return failure(error('side_chat_model_failed', messageOf(cause), true)) }

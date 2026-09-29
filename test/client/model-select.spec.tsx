@@ -95,6 +95,33 @@ describe('SideChatModelSelect', () => {
     })
   })
 
+  it('keeps the effort menu usable during generation and explains next-reply behavior', async () => {
+    const onSelect = vi.fn(async selection => ({ ok: true as const, value: selection }))
+    render(<SideChatModelSelect directory={modelDirectory()} locked={false} running
+      onInitialize={vi.fn()} onSelect={onSelect} />)
+    const trigger = screen.getByRole('button', { name: /Select model/ })
+    expect(trigger).not.toBeDisabled()
+    fireEvent.click(trigger)
+    expect(screen.getByText('Changes apply to the next reply and future Side Chats.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Effort/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /High/ }))
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith({
+      provider: 'openai', model: 'o3', reasoningEffort: 'high',
+    }))
+  })
+
+  it('saves an explicit choice even when it matches the displayed default effort', async () => {
+    const onSelect = vi.fn(async selection => ({ ok: true as const, value: selection }))
+    render(<SideChatModelSelect directory={modelDirectory()} locked={false}
+      onInitialize={vi.fn()} onSelect={onSelect} />)
+    fireEvent.click(screen.getByRole('button', { name: /Select model/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Effort/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Medium/ }))
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith({
+      provider: 'openai', model: 'o3', reasoningEffort: 'medium',
+    }))
+  })
+
   it.each([
     {
       name: 'missing model',
