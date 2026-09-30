@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/AHGGG/dsh-side-chat/compare/v1.0.1...v1.0.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* support DSH 0.2.0-rc.2 ([1a0cc26](https://github.com/AHGGG/dsh-side-chat/commit/1a0cc26e4d700ee0165fc82003c459c50e67e326))
+* support DSH 0.2.0-rc.2 ([0cd138c](https://github.com/AHGGG/dsh-side-chat/commit/0cd138cd7cb5ac9079aa9cdc88cea467a215bbb4))
+
 ## [1.0.1](https://github.com/AHGGG/dsh-side-chat/compare/v1.0.0...v1.0.1) (2026-09-29)
 
 
