@@ -8,19 +8,21 @@ Ask a focused follow-up about selected text without leaving your current convers
 
 ## Install
 
-The current source targets DSH `0.2.0-rc.2`. The published `@ahggg/dsh-side-chat@1.0.1` targets only `0.2.0-rc.1`; Desktop on rc.2 requires a new Side Chat release containing the compatibility update. The commands below apply to the published rc.1 version.
+Use a Side Chat version that matches your DSH runtime:
 
-Use these exact versions together:
+| Side Chat | DeepSeek Harness runtime |
+| --- | --- |
+| `@ahggg/dsh-side-chat@1.0.2` | `0.2.0-rc.2` |
+| `@ahggg/dsh-side-chat@1.0.1` | `0.2.0-rc.1` |
 
-- **Side Chat:** `@ahggg/dsh-side-chat@1.0.1`
-- **DeepSeek Harness runtime:** `0.2.0-rc.1`
+The instructions below use **Side Chat 1.0.2 with DSH 0.2.0-rc.2**. If you are staying on DSH rc.1, keep Side Chat 1.0.1 until you upgrade the runtime.
 
 ### DeepSeek Harness Desktop
 
-Side Chat supports the Desktop app. In its plugin installation dialog, enter the complete package spec:
+In DeepSeek Harness Desktop `0.2.0-rc.2`, open the plugin installation dialog and enter the complete package spec:
 
 ```text
-@ahggg/dsh-side-chat@1.0.1
+@ahggg/dsh-side-chat@1.0.2
 ```
 
 Install it, then restart DeepSeek Harness Desktop. Use the Desktop app's plugin manager for Desktop installations; the CLI commands below target the Web profile.
@@ -30,8 +32,8 @@ Install it, then restart DeepSeek Harness Desktop. Use the Desktop app's plugin 
 Install the matching DSH CLI if needed, then install the pinned plugin version:
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.2.0-rc.1
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.1 --save-exact
+npm install --global @deepseek-ai/dsh@0.2.0-rc.2
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.2 --save-exact
 ```
 
 Start DSH from the project you want the agent to work in:
@@ -100,22 +102,23 @@ The text snapshot and Side Chat history are sent to the model on each request, s
 
 ### Desktop
 
-In the Desktop app's plugin manager, update or reinstall using this exact package spec, then restart the app:
+After upgrading Desktop to DSH `0.2.0-rc.2`, update or reinstall Side Chat through the app's plugin manager using this exact package spec, then restart the app:
 
 ```text
-@ahggg/dsh-side-chat@1.0.1
+@ahggg/dsh-side-chat@1.0.2
 ```
 
-If Desktop on DSH `0.2.0-rc.2` reports that `@ahggg/dsh-side-chat@1.0.1` requires rc.1, the published plugin has not yet been updated for that runtime. Install a Side Chat release that explicitly supports rc.2 when available. Desktop and Web profiles have separate plugin installations; update the appropriate profile and keep DSH's compatibility check enabled.
+If Desktop on DSH `0.2.0-rc.2` still reports that `@ahggg/dsh-side-chat@1.0.1` requires rc.1, it is loading the previous plugin version. Update the Desktop plugin to 1.0.2 and restart the app. Desktop and Web profiles have separate plugin installations; update the appropriate profile and keep DSH's compatibility check enabled.
 
 To uninstall, remove Side Chat through the Desktop app's plugin manager.
 
 ### Web
 
-To upgrade an existing Web installation to `1.0.1`, re-add the exact version. `add --save-exact` replaces the installed package version and keeps the dependency pinned:
+To upgrade an existing Web installation to Side Chat `1.0.2` with DSH `0.2.0-rc.2`, install the matching CLI and re-add the exact plugin version. `add --save-exact` replaces the installed package version and keeps the dependency pinned:
 
 ```powershell
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.1 --save-exact
+npm install --global @deepseek-ai/dsh@0.2.0-rc.2
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.2 --save-exact
 ```
 
 Restart `dsh web` and reload the browser after updating. Remove the Web-profile plugin with:
