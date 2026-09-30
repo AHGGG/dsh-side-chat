@@ -66,6 +66,15 @@ for (const name of dshPeerNames) manifest.peerDependencies[name] = supportedRang
 for (const name of dshDevNames) manifest.devDependencies[name] = targetVersion
 
 await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`)
+// pnpm matches release-age exclusions by package name in order. Old train
+// entries would shadow the new exact versions added during installation.
+const workspacePath = resolve(root, 'pnpm-workspace.yaml')
+const workspace = await readFile(workspacePath, 'utf8')
+const nextWorkspace = workspace.replace(
+  /^minimumReleaseAgeExclude:\r?\n(?:[ \t]+[^\r\n]*\r?\n)*/m,
+  section => section.replace(/^ +-[ \t]+['"]@deepseek-ai\/dsh-[^'"\r\n]+['"]\r?\n/gm, ''),
+)
+if (nextWorkspace !== workspace) await writeFile(workspacePath, nextWorkspace)
 // A clean resolution prevents prerelease packages from previous trains
 // from leaking into the regenerated lockfile.
 await rm(resolve(root, 'node_modules'), { recursive: true, force: true })

@@ -8,6 +8,8 @@ Ask a focused follow-up about selected text without leaving your current convers
 
 ## Install
 
+The current source targets DSH `0.2.0-rc.2`. The published `@ahggg/dsh-side-chat@1.0.1` targets only `0.2.0-rc.1`; Desktop on rc.2 requires a new Side Chat release containing the compatibility update. The commands below apply to the published rc.1 version.
+
 Use these exact versions together:
 
 - **Side Chat:** `@ahggg/dsh-side-chat@1.0.1`
@@ -104,7 +106,7 @@ In the Desktop app's plugin manager, update or reinstall using this exact packag
 @ahggg/dsh-side-chat@1.0.1
 ```
 
-If Desktop still reports `@ahggg/dsh-side-chat@0.7.3`, it is loading the old plugin, which does not support DSH `0.2.0-rc.1`. A working `dsh web` installation does not mean Desktop has been updated. Update the Desktop installation rather than bypassing DSH's compatibility check.
+If Desktop on DSH `0.2.0-rc.2` reports that `@ahggg/dsh-side-chat@1.0.1` requires rc.1, the published plugin has not yet been updated for that runtime. Install a Side Chat release that explicitly supports rc.2 when available. Desktop and Web profiles have separate plugin installations; update the appropriate profile and keep DSH's compatibility check enabled.
 
 To uninstall, remove Side Chat through the Desktop app's plugin manager.
 
