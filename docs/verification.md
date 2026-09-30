@@ -1,10 +1,10 @@
-# Session-free Side Chat: verification handoff
+# Side Chat verification
 
-Verification of this refactor is **left to the maintainer**. The coding assistant did not run tests, typecheck, lint, package probes, builds, or browser smoke tests for the refactor, as requested. Regression tests were authored but not executed by the assistant. The PR includes the `lib/` artifacts present in the working checkout; they were not rebuilt or checked for freshness during PR preparation. DSH loads `lib/`, not `src/`, so rebuild and verify the final source before relying on the installed plugin.
+The DSH rc.2 compatibility update passed peer checks, typecheck, lint, all 133 regression tests, build/package verification, and packed Host/Client/Remote/Typert imports in a clean rc.2 profile. The committed `lib/` artifacts were rebuilt. Interactive Desktop and Web smoke tests remain to be performed using the checklist below; the import probes do not establish provider streaming or desktop installation behavior.
 
 ## Build and automated checks
 
-Use **DSH 0.2.0-rc.1**, not npm's `latest` tag (which previously resolved to 0.1.7-rc.2). Do not bypass the plugin compatibility check.
+Use **DSH 0.2.0-rc.2** for the current source, with all DSH packages on that exact version. The published Side Chat 1.0.1 package still targets rc.1; use a package built from this update or its subsequent npm release. Do not bypass the plugin compatibility check.
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -31,7 +31,7 @@ pnpm clean-profile:verify
 
 ## Design and compatibility scope
 
-Only DSH 0.2.0-rc.1 is supported. The adapter lives in `src/client/dsh/`; `ChatSnapshot.legacy` is still used because it is DSH 0.2's published parent transcript projection, not an older-runtime fallback.
+Only DSH 0.2.0-rc.2 is supported by the current source. The adapter lives in `src/client/dsh/`; `ChatSnapshot.legacy` is still used because it is DSH 0.2's published parent transcript projection, not an older-runtime fallback.
 
 The Host implementation is `src/host/read-only-chat-service.ts`. It holds a text snapshot and bounded conversation history in memory, calls `llm.prepareCall` directly with no tools or Session identity, and exposes cancellable Typert streams. It does not inherit parent Agent presets, execute an Agent loop, or promise provider prefix-cache reuse. Normal provider token usage still applies.
 
