@@ -4,7 +4,7 @@ The DSH rc.2 compatibility update passed peer checks, typecheck, lint, all 133 r
 
 ## Build and automated checks
 
-Use **DSH 0.2.0-rc.2** for the current source, with all DSH packages on that exact version. The published Side Chat 1.0.1 package still targets rc.1; use a package built from this update or its subsequent npm release. Do not bypass the plugin compatibility check.
+Use **DSH 0.2.0-rc.2** for the current source, with all DSH packages on that exact version. For registry installations, use the published **Side Chat 1.0.2** package. Side Chat 1.0.1 targets rc.1. Do not bypass the plugin compatibility check.
 
 ```powershell
 pnpm install --frozen-lockfile

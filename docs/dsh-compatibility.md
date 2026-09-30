@@ -2,7 +2,7 @@
 
 `package.json` is the source of truth for DSH compatibility. The current source targets only DSH `0.2.0-rc.2`. Its exact version is mirrored in `dshCompatibility.testedVersions`, DSH peer and development dependencies, and the DSH Store-compatible `dsh.compatibility` map. The plugin makes no promise of compatibility with older or future prerelease trains.
 
-The published `@ahggg/dsh-side-chat@1.0.1` targets rc.1. Its exact DSH peer requirements cause rc.2 Desktop installations to reject it. Updating this repository does not change that published package; the rc.2 compatibility update needs a new npm release. Keep the existing 1.0.1 release for rc.1 users.
+The published `@ahggg/dsh-side-chat@1.0.2` targets rc.2. The previous `1.0.1` release targets rc.1; its exact DSH peer requirements cause rc.2 Desktop installations to reject it. Install 1.0.2 on rc.2 and keep 1.0.1 for rc.1 users. See the [installation instructions](../README.md#install) for Desktop and Web.
 
 DSH's [official compatibility gate](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.0-rc.2/packages/boot/app-boot/src/plugin-compatibility.ts) checks every DSH peer with `semver.satisfies(runtimeVersion, range, { includePrerelease: true })`. Changing only `dsh.compatibility` would not fix the rejection. A probe using the published rc.2 gate confirmed that the old manifest rejects rc.2 with 14 mismatches, the updated manifest accepts rc.2, and the updated manifest still rejects untested rc.3.
 
