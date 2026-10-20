@@ -17,6 +17,8 @@ Use a Side Chat version that matches your DSH runtime:
 
 The instructions below use **Side Chat 1.0.2 with DSH 0.2.0-rc.2**. If you are staying on DSH rc.1, keep Side Chat 1.0.1 until you upgrade the runtime.
 
+The current source targets DSH `0.2.1-rc.2`. The published `@ahggg/dsh-side-chat@1.0.2` still targets `0.2.0-rc.2`; Desktop on `0.2.1-rc.2` needs a new Side Chat release containing this compatibility update. Keep DSH's plugin compatibility check enabled rather than bypassing it.
+
 ### DeepSeek Harness Desktop
 
 In DeepSeek Harness Desktop `0.2.0-rc.2`, open the plugin installation dialog and enter the complete package spec:
@@ -109,6 +111,8 @@ After upgrading Desktop to DSH `0.2.0-rc.2`, update or reinstall Side Chat throu
 ```
 
 If Desktop on DSH `0.2.0-rc.2` still reports that `@ahggg/dsh-side-chat@1.0.1` requires rc.1, it is loading the previous plugin version. Update the Desktop plugin to 1.0.2 and restart the app. Desktop and Web profiles have separate plugin installations; update the appropriate profile and keep DSH's compatibility check enabled.
+
+If Desktop is on DSH `0.2.1-rc.2`, the published `1.0.2` is rejected until a release containing this compatibility update is installed. Do not bypass DSH's compatibility check in the meantime.
 
 To uninstall, remove Side Chat through the Desktop app's plugin manager.
 
