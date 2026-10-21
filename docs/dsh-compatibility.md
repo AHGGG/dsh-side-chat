@@ -1,10 +1,12 @@
 # DSH compatibility
 
-`package.json` is the source of truth for DSH compatibility. The current source targets only DSH `0.2.0-rc.2`. Its exact version is mirrored in `dshCompatibility.testedVersions`, DSH peer and development dependencies, and the DSH Store-compatible `dsh.compatibility` map. The plugin makes no promise of compatibility with older or future prerelease trains.
+`package.json` is the source of truth for DSH compatibility. The current source targets only DSH `0.2.1-rc.2`. Its exact version is mirrored in `dshCompatibility.testedVersions`, DSH peer and development dependencies, and the DSH Store-compatible `dsh.compatibility` map. The plugin makes no promise of compatibility with older or future prerelease trains.
 
-The published `@ahggg/dsh-side-chat@1.0.2` targets rc.2. The previous `1.0.1` release targets rc.1; its exact DSH peer requirements cause rc.2 Desktop installations to reject it. Install 1.0.2 on rc.2 and keep 1.0.1 for rc.1 users. See the [installation instructions](../README.md#install) for Desktop and Web.
+The published `@ahggg/dsh-side-chat@1.0.2` targets `0.2.0-rc.2` (DSH rc.2). Its exact DSH peer requirements cause `0.2.1-rc.2` Desktop installations to reject it until a release containing this update is published. Install the next release on `0.2.1-rc.2` and keep 1.0.2 for `0.2.0-rc.2` users. See the [installation instructions](../README.md#install) for Desktop and Web.
 
-DSH's [official compatibility gate](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.0-rc.2/packages/boot/app-boot/src/plugin-compatibility.ts) checks every DSH peer with `semver.satisfies(runtimeVersion, range, { includePrerelease: true })`. Changing only `dsh.compatibility` would not fix the rejection. A probe using the published rc.2 gate confirmed that the old manifest rejects rc.2 with 14 mismatches, the updated manifest accepts rc.2, and the updated manifest still rejects untested rc.3.
+DSH's [official compatibility gate](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/packages/boot/app-boot/src/plugin-compatibility.ts) checks every DSH peer with `semver.satisfies(runtimeVersion, range, { includePrerelease: true })`. Changing only `dsh.compatibility` would not fix the rejection. A probe using the published `0.2.1-rc.2` gate confirmed that the previous manifest rejects `0.2.1-rc.2` with 14 mismatches, the updated manifest accepts `0.2.1-rc.2`, and the updated manifest still rejects an untested train.
+
+DSH `0.2.1-rc.2` also moves the shared Cordis runtime to `4.0.5`, so the `@deepseek-ai/cordis` peer and development dependency are raised from `4.0.4` to the matching `~4.0.5` / `4.0.5` pair. The generated lockfile keeps the existing non-DSH toolchain resolutions, so the committed `lib/` artifacts stay reproducible and unchanged.
 
 Clean-profile verification installs the declared train and probes the packed Host, Client and Remote entries without mixing DSH package versions. This import probe does not replace an interactive Web-client smoke test.
 
@@ -21,9 +23,9 @@ The implementation uses these published APIs:
 
 The current Client adapter lives in `src/client/dsh/`. Older Session snapshot shapes, old composer representations, and old draft-storage formats are not supported. `ChatSnapshot.legacy` is still used because it is DSH 0.2's published transcript projection, not because older DSH runtimes are supported.
 
-The [rc.1 to rc.2 upstream comparison](https://github.com/deepseek-ai/deepseek-harness/compare/dsh-v0.2.0-rc.1...dsh-v0.2.0-rc.2) did not show breaking changes to the Host, Client, or RPC interfaces used here. The update passed peer checks, typecheck, lint, all 133 tests, build/package verification, and a clean-profile import probe against the published rc.2 packages. No application-source changes were required. These checks do not establish interactive Desktop or Web model-streaming behavior; use [verification.md](verification.md) for that checklist. Existing archived Side Chat Sessions are left untouched; the plugin creates no new ones.
+The [rc.2 to 0.2.1-rc.2 upstream comparison](https://github.com/deepseek-ai/deepseek-harness/compare/dsh-v0.2.0-rc.2...dsh-v0.2.1-rc.2) did not show breaking changes to the Host, Client, or RPC interfaces used here. The update passed peer checks, typecheck, lint, all 133 tests, build/package verification, and a clean-profile import probe against the published `0.2.1-rc.2` packages. No application-source changes were required. These checks do not establish interactive Desktop or Web model-streaming behavior; use [verification.md](verification.md) for that checklist. Existing archived Side Chat Sessions are left untouched; the plugin creates no new ones.
 
-The [rc.2 release notes](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.0-rc.2) mention removal of older model IDs after the model catalog update. If a saved Side Chat model no longer resolves, choose a model again in the Side Chat picker.
+The [0.2.1-rc.2 release notes](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) add DeepSeek-V4.1-Flash-1017 and DeepSeek Search/Fetch support. If a saved Side Chat model no longer resolves, choose a model again in the Side Chat picker.
 
 ## Runtime artifacts
 
