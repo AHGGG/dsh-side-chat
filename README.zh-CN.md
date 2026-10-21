@@ -12,19 +12,20 @@
 
 | Side Chat | DeepSeek Harness 运行时 |
 | --- | --- |
+| `@ahggg/dsh-side-chat@1.0.3` | `0.2.1-rc.2` |
 | `@ahggg/dsh-side-chat@1.0.2` | `0.2.0-rc.2` |
 | `@ahggg/dsh-side-chat@1.0.1` | `0.2.0-rc.1` |
 
-以下安装和升级说明使用 **Side Chat 1.0.2 + DSH 0.2.0-rc.2**。如果暂时保留 DSH rc.1，请继续使用 Side Chat 1.0.1，等升级运行时后再更新插件。
+以下安装和升级说明使用 **Side Chat 1.0.3 + DSH 0.2.1-rc.2**。如果暂时保留较旧的 DSH 运行时，请继续使用表中匹配的 Side Chat 版本，等升级运行时后再更新插件。
 
-当前源码已适配 DSH `0.2.1-rc.2`。npm 已发布的 `@ahggg/dsh-side-chat@1.0.2` 仍只支持 `0.2.0-rc.2`；DSH `0.2.1-rc.2` 桌面端需要安装包含本次兼容更新的新插件版本。请保留 DSH 的插件兼容性检查，不要绕过它。
+请保留 DSH 的插件兼容性检查，不要绕过它。
 
 ### DeepSeek Harness 桌面端
 
-在 DeepSeek Harness `0.2.0-rc.2` 桌面应用的插件安装对话框中，输入完整的包名和版本：
+在 DeepSeek Harness `0.2.1-rc.2` 桌面应用的插件安装对话框中，输入完整的包名和版本：
 
 ```text
-@ahggg/dsh-side-chat@1.0.2
+@ahggg/dsh-side-chat@1.0.3
 ```
 
 安装后重启 DeepSeek Harness 桌面应用。桌面端请使用应用内的插件管理功能；下方 CLI 命令仅针对 Web profile。
@@ -34,8 +35,8 @@
 如有需要，先安装匹配版本的 DSH CLI，再安装并固定插件版本：
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.2.0-rc.2
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.2 --save-exact
+npm install --global @deepseek-ai/dsh@0.2.1-rc.2
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.3 --save-exact
 ```
 
 从希望 Agent 操作的真实工程目录启动 DSH：
@@ -104,25 +105,23 @@ Side Chat 只在内存中保留独立的临时讨论历史，**不会 fork、复
 
 ### 桌面端
 
-将桌面应用升级到 DSH `0.2.0-rc.2` 后，在应用内的插件管理功能中，使用以下确切包版本更新或重新安装 Side Chat，然后重启应用：
+将桌面应用升级到 DSH `0.2.1-rc.2` 后，在应用内的插件管理功能中，使用以下确切包版本更新或重新安装 Side Chat，然后重启应用：
 
 ```text
-@ahggg/dsh-side-chat@1.0.2
+@ahggg/dsh-side-chat@1.0.3
 ```
 
-如果 DSH `0.2.0-rc.2` 桌面端仍提示 `@ahggg/dsh-side-chat@1.0.1` 要求 rc.1，说明它还在加载旧插件。请将桌面端插件更新到 1.0.2 并重启应用。桌面端和 Web profile 的插件安装相互独立，请更新实际使用的 profile，并保留 DSH 的兼容性检查。
-
-如果桌面端已升级到 DSH `0.2.1-rc.2`，在包含本次兼容更新的插件版本发布之前，已发布的 `1.0.2` 会被拒绝加载。在此期间请不要绕过 DSH 的兼容性检查。
+如果 DSH `0.2.1-rc.2` 桌面端仍提示 `@ahggg/dsh-side-chat@1.0.2` 要求 `0.2.0-rc.2`，说明它还在加载旧插件。请将桌面端插件更新到 1.0.3 并重启应用。桌面端和 Web profile 的插件安装相互独立，请更新实际使用的 profile，并保留 DSH 的兼容性检查。
 
 卸载时，在桌面应用的插件管理功能中移除 Side Chat 即可。
 
 ### Web 端
 
-要将已有的 Web 安装升级到 **Side Chat 1.0.2 + DSH 0.2.0-rc.2**，先安装匹配版本的 CLI，再重新添加这个确切插件版本。`add --save-exact` 会替换已安装的包版本，并将依赖固定到该版本：
+要将已有的 Web 安装升级到 **Side Chat 1.0.3 + DSH 0.2.1-rc.2**，先安装匹配版本的 CLI，再重新添加这个确切插件版本。`add --save-exact` 会替换已安装的包版本，并将依赖固定到该版本：
 
 ```powershell
-npm install --global @deepseek-ai/dsh@0.2.0-rc.2
-dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.2 --save-exact
+npm install --global @deepseek-ai/dsh@0.2.1-rc.2
+dsh plugin --profile web add @ahggg/dsh-side-chat@1.0.3 --save-exact
 ```
 
 更新后重启 `dsh web` 并刷新浏览器。卸载 Web profile 中的插件：
