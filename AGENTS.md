@@ -1,0 +1,1 @@
+- Update `README.md` and `README.zh-CN.md` together in the same change whenever release versions, DSH compatibility, installation/upgrade instructions, or user-facing behavior change; keep both consistent with `package.json` and clearly distinguish published releases from unreleased source.
