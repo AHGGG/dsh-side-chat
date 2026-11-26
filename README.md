@@ -8,7 +8,9 @@ Ask a focused follow-up about selected text without leaving your current convers
 
 ## Install
 
-Use a Side Chat version that matches your DSH runtime:
+> **Unreleased source:** This checkout targets DSH `0.2.2-rc.5`. To try it before release, use Node.js 24.9 or later and run `pnpm install --frozen-lockfile` and `pnpm build`, then install the local checkout from the DSH plugin manager. The published `1.0.3` package still targets `0.2.1-rc.2`.
+
+Use a published Side Chat version that matches your DSH runtime:
 
 | Side Chat | DeepSeek Harness runtime |
 | --- | --- |

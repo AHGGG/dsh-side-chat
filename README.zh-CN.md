@@ -8,7 +8,9 @@
 
 ## 安装
 
-请根据 DSH 运行时选择匹配的 Side Chat 版本：
+> **尚未发布的源码：** 此源码适配 DSH `0.2.2-rc.5`。如需提前试用，使用 Node.js 24.9 或更高版本，执行 `pnpm install --frozen-lockfile` 和 `pnpm build` 后，从 DSH 插件管理器安装本地源码目录。已发布的 `1.0.3` 仍对应 `0.2.1-rc.2`。
+
+请根据 DSH 运行时选择匹配的已发布 Side Chat 版本：
 
 | Side Chat | DeepSeek Harness 运行时 |
 | --- | --- |

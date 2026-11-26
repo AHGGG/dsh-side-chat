@@ -7,17 +7,11 @@ const sideChatCss = readFileSync(
   new URL('../../src/client/panel/side-chat.css', import.meta.url),
   'utf8',
 )
-const harnessThemeBundle = readFileSync(
-  require.resolve('@deepseek-ai/dsh-client-ui-theme/client'),
+// Read the published stylesheet instead of depending on a bundler's generated variable name.
+const harnessThemeCss = readFileSync(
+  require.resolve('@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css'),
   'utf8',
 )
-const encodedThemeCss = /\bdesign_platform_css_default\s*=\s*("(?:[^"\\]|\\.)*")/.exec(
-  harnessThemeBundle,
-)?.[1]
-if (encodedThemeCss === undefined) throw new Error('DSH theme bundle does not contain design-platform.css')
-const parsedThemeCss: unknown = JSON.parse(encodedThemeCss)
-if (typeof parsedThemeCss !== 'string') throw new Error('DSH theme bundle contains invalid design-platform.css')
-const harnessThemeCss = parsedThemeCss
 
 function themeValues(dark: boolean): Map<string, string> {
   const values = new Map<string, string>()
@@ -140,7 +134,7 @@ describe('Side Chat theme styles', () => {
     // rather than DSH's alpha-tinted menu fill that exposes underlying text.
     for (const dark of [false, true]) {
       expect(resolveThemeValue('--dsw-alias-bg-layer-2', themeValues(dark)))
-        .toMatch(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i)
+        .toMatch(/^(?:#(?:[0-9a-f]{3}|[0-9a-f]{6})|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i)
     }
   })
 
