@@ -106,17 +106,17 @@ export function serializeReferencedConversation(reference: ReferencedSideChatCon
   ].join('\n')
 }
 
-/** Parse a sent reference prefix so the main thread can keep showing one label. */
-export function parseReferencedConversationPrompt(
-  text: string,
-): ParsedReferencedConversationPrompt | undefined {
-  const prefix = `${OPEN_TAG}\n`
-  if (!text.startsWith(prefix)) return
-  const closeToken = `\n${CLOSE_TAG}`
-  const closeIndex = text.indexOf(closeToken, prefix.length)
-  if (closeIndex < 0) return
-  const json = text.slice(prefix.length, closeIndex)
-  if (json.length === 0) return
+/** Read a sent reference and its original range without rewriting the visible suffix. */
+export function readReferencedConversationPrefix(text: string): {
+  readonly reference: ReferencedSideChatConversation
+  readonly end: number
+} | undefined {
+  const prefix = /^\s*<referenced_conversation>\r?\n/u.exec(text)
+  if (prefix === null) return
+  const body = text.slice(prefix[0].length)
+  const close = /\r?\n<\/referenced_conversation>\s*/u.exec(body)
+  if (close === null || close.index === 0) return
+  const json = body.slice(0, close.index)
   try {
     const parsed = JSON.parse(json) as {
       readonly conversationId?: unknown
@@ -129,13 +129,15 @@ export function parseReferencedConversationPrompt(
       title: parsed.title,
       conversation: parsed.conversation,
     }))
-    return {
-      reference,
-      message: text.slice(closeIndex + closeToken.length).trim(),
-    }
+    return { reference, end: prefix[0].length + close.index + close[0].length }
   } catch {
     return
   }
+}
+
+export function parseReferencedConversationPrompt(text: string): ParsedReferencedConversationPrompt | undefined {
+  const prefix = readReferencedConversationPrefix(text)
+  return prefix === undefined ? undefined : { reference: prefix.reference, message: text.slice(prefix.end).trim() }
 }
 
 function matchingOccurrences(

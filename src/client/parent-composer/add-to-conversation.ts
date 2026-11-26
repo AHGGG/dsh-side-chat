@@ -171,7 +171,11 @@ export interface AnnotatedConversationPrompt {
   readonly annotations: readonly ConversationAnnotation[]
   readonly message: string
 }
-export function parseAnnotatedConversationPrompt(text: string): AnnotatedConversationPrompt | undefined {
+/** Locate the original text range so DSH can render the rest of the message normally. */
+export function readAnnotatedConversationPrefix(text: string): {
+  readonly annotations: readonly ConversationAnnotation[]
+  readonly end: number
+} | undefined {
   // Stored messages outlive a plugin update. Reading their durable text does
   // not require an old DSH runtime or an old composer implementation.
   const prefix = /^\s*<selected_context(?: source="current-conversation" event-seq="\d+")?>\r?\n([\s\S]*?)\r?\n<\/selected_context>\s*/u.exec(text)
@@ -187,7 +191,12 @@ export function parseAnnotatedConversationPrompt(text: string): AnnotatedConvers
         ...(parts?.[2] === undefined ? {} : { comment: unescapeXmlText(parts[2]) }) })
     }
   }
-  return annotations.length === 0 ? undefined : { annotations, message: text.slice(prefix[0].length).trim() }
+  return annotations.length === 0 ? undefined : { annotations, end: prefix[0].length }
+}
+
+export function parseAnnotatedConversationPrompt(text: string): AnnotatedConversationPrompt | undefined {
+  const prefix = readAnnotatedConversationPrefix(text)
+  return prefix === undefined ? undefined : { annotations: prefix.annotations, message: text.slice(prefix.end).trim() }
 }
 
 /** The first prompt uses the same durable annotation format as the main composer. */
@@ -200,14 +209,19 @@ export function buildSideChatPrompt(selection: ConversationSelection | undefined
 }
 
 /** Decode a question only after recognizing this plugin's annotation prefix. */
-export function annotationMessageText(message: string): string {
+export function readAnnotationQuestionPrefix(message: string): { readonly text: string; readonly end: number } | undefined {
   const question = /^<user_question>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/user_question>(?=$|\s)/u.exec(message)
-  if (question === null) return message
-  const text = unescapeXmlText((question[1] ?? '').trim())
+  if (question === null) return
+  return { text: unescapeXmlText((question[1] ?? '').trim()), end: question[0].length }
+}
+
+function annotationMessageText(message: string): string {
+  const question = readAnnotationQuestionPrefix(message)
+  if (question === undefined) return message
   // Attachments or additional text blocks must not make the question wrapper
   // reappear, nor be discarded while projecting the model-facing payload.
-  const suffix = message.slice(question[0].length).trim()
-  return [text, suffix].filter(part => part.length > 0).join('\n')
+  const suffix = message.slice(question.end).trim()
+  return [question.text, suffix].filter(part => part.length > 0).join('\n')
 }
 
 /** One projection supplies both the annotation capsule and the visible question. */

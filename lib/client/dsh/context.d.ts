@@ -17,5 +17,5 @@ export type DshClientContext = Omit<Context, 'conversation' | 'inputTriggers' | 
     readonly sessions: ISessions;
     readonly slots: SlotRegistry;
     readonly uiWorkspace: UiWorkspace;
-    readonly uiConversation: Pick<UiConversation, 'binding'>;
+    readonly uiConversation: Pick<UiConversation, 'binding' | 'userText'>;
 };

@@ -31,5 +31,5 @@ export type DshClientContext = Omit<
   readonly sessions: ISessions
   readonly slots: SlotRegistry
   readonly uiWorkspace: UiWorkspace
-  readonly uiConversation: Pick<UiConversation, 'binding'>
+  readonly uiConversation: Pick<UiConversation, 'binding' | 'userText'>
 }

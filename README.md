@@ -81,7 +81,7 @@ Useful details:
 - The composer has one action button: **Send** when idle, **Stop** while generating. It returns to Send after the reply finishes or stops, keeping any follow-up draft. Text entered while a send is pending stays in the composer.
 - Assistant replies use DSH's native Markdown rendering.
 - Hover over `N annotations` to preview every selected passage and its comment.
-- Before sending, hover over the annotation capsule and click `×` to remove it; after sending, the same capsule appears above the user message.
+- Before sending, hover over the annotation capsule and click `×` to remove it. After sending, the capsule appears above your main-chat bubble, and your message appears without internal tags.
 - Your first Side Chat message displays the selected passage as one annotation and your question as plain text, not internal XML.
 - The main conversation stays visible. No child Session is created.
 
