@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.4](https://github.com/AHGGG/dsh-side-chat/compare/v1.0.3...v1.0.4) (2026-11-26)
+
+
+### Bug Fixes
+
+* render sent annotations as chips in main chat ([766df0a](https://github.com/AHGGG/dsh-side-chat/commit/766df0a708f31f21545f957939155200e9a66e0a))
+* render sent annotations as chips in main chat ([91af78c](https://github.com/AHGGG/dsh-side-chat/commit/91af78c3be9fbaa38a84aa4112f15d24f797b117))
+* support DSH 0.2.2-rc.5 ([c7ded07](https://github.com/AHGGG/dsh-side-chat/commit/c7ded0728bdf57f7abb3e625df89fd141761f6e6))
+* support DSH 0.2.2-rc.5 ([fdd1643](https://github.com/AHGGG/dsh-side-chat/commit/fdd164382c3530bbcd1e2c946edb66f65455e7df))
+
 ## [1.0.3](https://github.com/AHGGG/dsh-side-chat/compare/v1.0.2...v1.0.3) (2026-10-21)
 
 
