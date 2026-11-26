@@ -24,7 +24,11 @@ export declare function referencedSideChatConversation(input: {
 }): ReferencedSideChatConversation;
 /** Durable model-facing form of the referenced conversation label. */
 export declare function serializeReferencedConversation(reference: ReferencedSideChatConversation): string;
-/** Parse a sent reference prefix so the main thread can keep showing one label. */
+/** Read a sent reference and its original range without rewriting the visible suffix. */
+export declare function readReferencedConversationPrefix(text: string): {
+    readonly reference: ReferencedSideChatConversation;
+    readonly end: number;
+} | undefined;
 export declare function parseReferencedConversationPrompt(text: string): ParsedReferencedConversationPrompt | undefined;
 /** Insert or refresh one Side Chat label without duplicating an older snapshot. */
 export declare function addReferencedSideChatToConversation(input: ParentComposerInput, reference: ReferencedSideChatConversation): boolean;

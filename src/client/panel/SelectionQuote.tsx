@@ -11,15 +11,21 @@ export function SelectionQuote({
   selections,
   messages,
   onRemove,
+  inline = false,
 }: {
   readonly selections: readonly SelectionQuoteItem[]
   readonly messages: SideChatMessages
   readonly onRemove?: () => void
+  /** DSH's user-text slot sits inside a span, so use only phrasing elements there. */
+  readonly inline?: boolean
 }) {
+  const Root = inline ? 'span' : 'section'
+  const Box = inline ? 'span' : 'div'
+  const Text = inline ? 'span' : 'pre'
   const [expanded, setExpanded] = useState(false)
   const [hovered, setHovered] = useState(false)
-  const quoteRef = useRef<HTMLElement>(null)
-  const detailsRef = useRef<HTMLDivElement>(null)
+  const quoteRef = useRef<HTMLElement | null>(null)
+  const detailsRef = useRef<HTMLElement | null>(null)
   const leaveTimerRef = useRef<number>()
 
   const keepHoverOpen = () => {
@@ -73,9 +79,10 @@ export function SelectionQuote({
   }
 
   return (
-    <section
-      ref={quoteRef}
+    <Root
+      ref={(element) => { quoteRef.current = element }}
       className="dsh-side-chat-quote"
+      role={inline ? 'region' : undefined}
       aria-label={messages.selectedPassage}
       data-expanded={expanded || undefined}
       data-hovered={hovered || undefined}
@@ -93,7 +100,7 @@ export function SelectionQuote({
         setHovered(false)
       }}
     >
-      <div className="dsh-side-chat-quote-chip">
+      <Box className="dsh-side-chat-quote-chip">
         <button
           type="button"
           className="dsh-side-chat-quote-trigger"
@@ -122,23 +129,23 @@ export function SelectionQuote({
             onClick={onRemove}
           >×</button>
         )}
-      </div>
-      <div ref={detailsRef} className="dsh-side-chat-quote-details" role="tooltip">
+      </Box>
+      <Box ref={(element) => { detailsRef.current = element }} className="dsh-side-chat-quote-details" role="tooltip">
         {selections.map((selection, index) => (
-          <div className="dsh-side-chat-quote-detail" key={`${String(index)}-${selection.text}`}>
-            <div className="dsh-side-chat-quote-details-header">
+          <Box className="dsh-side-chat-quote-detail" key={`${String(index)}-${selection.text}`}>
+            <Box className="dsh-side-chat-quote-details-header">
               <strong>{String(index + 1)}. {messages.selectionPreviewLabel}:</strong>
-            </div>
-            <pre>{selection.text}</pre>
+            </Box>
+            <Text className="dsh-side-chat-quote-text">{selection.text}</Text>
             {selection.comment !== undefined && (
-              <div className="dsh-side-chat-quote-comment">
+              <Box className="dsh-side-chat-quote-comment">
                 <strong>{messages.selectionCommentLabel}:</strong>
-                <pre>{selection.comment}</pre>
-              </div>
+                <Text className="dsh-side-chat-quote-text">{selection.comment}</Text>
+              </Box>
             )}
-          </div>
+          </Box>
         ))}
-      </div>
-    </section>
+      </Box>
+    </Root>
   )
 }

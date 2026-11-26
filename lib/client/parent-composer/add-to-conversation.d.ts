@@ -26,11 +26,19 @@ export interface AnnotatedConversationPrompt {
     readonly annotations: readonly ConversationAnnotation[];
     readonly message: string;
 }
+/** Locate the original text range so DSH can render the rest of the message normally. */
+export declare function readAnnotatedConversationPrefix(text: string): {
+    readonly annotations: readonly ConversationAnnotation[];
+    readonly end: number;
+} | undefined;
 export declare function parseAnnotatedConversationPrompt(text: string): AnnotatedConversationPrompt | undefined;
 /** The first prompt uses the same durable annotation format as the main composer. */
 export declare function buildSideChatPrompt(selection: ConversationSelection | undefined, question: string): readonly SideChatPromptPart[];
 /** Decode a question only after recognizing this plugin's annotation prefix. */
-export declare function annotationMessageText(message: string): string;
+export declare function readAnnotationQuestionPrefix(message: string): {
+    readonly text: string;
+    readonly end: number;
+} | undefined;
 /** One projection supplies both the annotation capsule and the visible question. */
 export declare function parseSideChatPrompt(text: string): AnnotatedConversationPrompt | undefined;
 export declare function sideChatQuestionText(text: string): string;

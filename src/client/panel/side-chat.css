@@ -1,6 +1,6 @@
 .dsh-side-chat-overlay,
 .dsh-side-chat-parent-annotation-dock,
-.dsh-side-chat-parent-user-message {
+.dsh-side-chat-sent-annotation {
   /* Use DSH's semantic theme aliases in both light and dark mode. */
   --side-chat-border: var(--dsw-alias-border-l2, var(--dsw-border, #d8d8de));
   --side-chat-bg: var(--dsw-alias-bg-layer-2, var(--dsw-surface, #ffffff));
@@ -755,24 +755,28 @@
   transform: translate(var(--dsh-side-chat-quote-offset-x, 0px), 0);
   visibility: visible;
 }
-.dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details {
+.dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details,
+.dsh-side-chat-sent-annotation .dsh-side-chat-quote-details {
   top: calc(100% + 8px);
   right: 0;
   bottom: auto;
   left: auto;
 }
-.dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details::before {
+.dsh-side-chat-annotated-user-message .dsh-side-chat-quote-details::before,
+.dsh-side-chat-sent-annotation .dsh-side-chat-quote-details::before {
   top: -8px;
   bottom: auto;
 }
 .dsh-side-chat-quote-details-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dsh-side-chat-quote-details-header strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
+.dsh-side-chat-quote-detail { display: block; }
 .dsh-side-chat-quote-detail + .dsh-side-chat-quote-detail {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--side-chat-border);
 }
-.dsh-side-chat-quote pre {
+.dsh-side-chat-quote-text {
+  display: block;
   max-height: 180px;
   margin: 4px 0 0;
   overflow: auto;
@@ -780,10 +784,10 @@
   font: inherit;
 }
 .dsh-side-chat-quote-comment {
+  display: block;
   margin-top: 9px;
 }
 .dsh-side-chat-quote-comment > strong { color: var(--side-chat-muted); font-size: 13px; font-weight: 500; }
-.dsh-side-chat-quote-comment > pre { margin-top: 4px; }
 .dsh-side-chat-error { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--side-chat-border); border-radius: 14px; background: var(--dsw-alias-interactive-bg-hover-danger, var(--dsw-surface-subtle, #f7f7f9)); }
 .dsh-side-chat-error { border-color: var(--dsw-alias-state-error-primary, var(--dsw-danger, #b42318)); }
 .dsh-side-chat-body { min-height: 0; flex: 1; overflow: hidden; }
@@ -823,21 +827,46 @@
   left: var(--annotation-left, 16px);
   pointer-events: auto;
 }
-.dsh-side-chat-parent-user-message {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+/* The user-text seat is inline. Reserve a row above annotated bubbles and
+   move only our 36px chip there, leaving the native bubble and actions alone. */
+[data-message-bubble]:has(.dsh-side-chat-sent-annotation) {
+  --dsh-side-chat-sent-gap: 8px;
+  position: relative;
+  margin-block-start: calc(36px + var(--dsh-side-chat-sent-gap));
 }
-.dsh-side-chat-parent-user-message > .dsh-side-chat-quote { align-self: flex-end; }
-/* DSH caps its inner user stack at 82%; give that percentage the full chat
-   column as its containing width instead of the annotation chip's shrink width. */
-.dsh-side-chat-parent-user-message-body { width: 100%; min-width: 0; }
-.dsh-side-chat-parent-user-message > .dsh-side-chat-quote .dsh-side-chat-quote-details {
-  right: 0;
-  left: auto;
+[data-message-bubble] .dsh-side-chat-sent-annotation {
+  position: absolute;
+  inset-block-end: calc(100% + var(--dsh-side-chat-sent-gap));
+  inset-inline-end: 0;
+  display: flex;
+  /* Start over the bubble like in Side Chat, but stay inside the right
+     edge when a short message is narrower than its chip. */
+  inline-size: max-content;
+  min-inline-size: 100%;
+  pointer-events: none;
+  white-space: nowrap;
+}
+[data-message-bubble] .dsh-side-chat-sent-annotation > .dsh-side-chat-quote {
+  display: flex;
+  pointer-events: auto;
+}
+.dsh-side-chat-sent-annotation-summary { margin-inline-end: .5em; }
+[data-message-bubble] .dsh-side-chat-sent-annotation-summary {
+  margin-inline-end: 0;
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding-inline: 11px;
+  border: 1px solid var(--side-chat-border);
+  border-radius: 999px;
+  background: var(--side-chat-bg);
+  font-size: 13px;
+}
+/* Do not draw an empty blue bubble when only an annotation was sent.
+   Keep native unknown-content blocks if the row has any. */
+[data-message-bubble]:has(> :only-child .dsh-side-chat-sent-annotation[data-annotation-only]) {
+  padding: 0;
+  background: transparent;
 }
 .dsh-side-chat-draft {
   display: grid;
